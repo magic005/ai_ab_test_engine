@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tests     Test[]
+}
+
+model Test {
+  id          String   @id @default(cuid())
+  name        String
+  projectId   String
+  fingerprint String // The CSS selector or element identifier
+  goal        String // 'click', 'pageview', etc.
+  goalTarget  String // e.g., url for pageview, selector for click
+  status      String   @default("draft") // draft, live, completed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variants    Variant[]
+}
+
+model Variant {
+  id        String   @id @default(cuid())
+  testId    String
+  name      String   // "Control", "Variant A"
+  content   String   // the replacement HTML/Text
+  traffic   Int      @default(50) // Percentage 0-100
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  test      Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  events    Event[]
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  variantId String
+  type      String   // "view", "conversion"
+  userId    String   // anonymous hashed user id
+  createdAt DateTime @default(now())
+  variant   Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([variantId, type])
+}
