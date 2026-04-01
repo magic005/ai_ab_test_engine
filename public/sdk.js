@@ -4,108 +4,131 @@
   const PROJECT_ID = document.currentScript.getAttribute('data-project-id');
 
   if (!PROJECT_ID) {
-    console.error('[AB Testing SDK] Missing data-project-id attribute on script tag.');
+    console.warn('[AB] Missing data-project-id on script tag.');
     return;
   }
 
-  // Determine User ID
-  let userId = localStorage.getItem('ab_test_userId');
+  // Sticky user ID
+  let userId = localStorage.getItem('ab_uid');
   if (!userId) {
-    userId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-    localStorage.setItem('ab_test_userId', userId);
+    userId = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+    localStorage.setItem('ab_uid', userId);
   }
 
-  // Admin Overlay Injection
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('ab_admin') === 'true') {
-    const adminScript = document.createElement('script');
-    adminScript.src = `${BASE_URL}/overlay.js`;
-    adminScript.setAttribute('data-target-url', BASE_URL);
-    adminScript.setAttribute('data-project-id', PROJECT_ID);
-    document.head.appendChild(adminScript);
-    return; // Don't run tests in admin mode to avoid conflicts
+  // Admin overlay injection
+  if (new URLSearchParams(window.location.search).get('ab_admin') === 'true') {
+    const s = document.createElement('script');
+    s.src = `${BASE_URL}/overlay.js`;
+    s.setAttribute('data-target-url', BASE_URL);
+    s.setAttribute('data-project-id', PROJECT_ID);
+    document.head.appendChild(s);
+    return;
   }
 
-  // Utility to determine if a variant wins (deterministic hash)
-  function hash(str) {
-    let hash = 0;
+  // Deterministic hash 0-99
+  function bucket(str) {
+    let h = 0;
     for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
+      h = Math.imul(31, h) + str.charCodeAt(i) | 0;
     }
-    return Math.abs(hash);
+    return Math.abs(h) % 100;
   }
 
-  async function trackEvent(variantId, type) {
+  // Find element by selector, falling back to text-content match
+  function findElement(selector, controlText) {
+    // 1. Try the stored CSS selector directly
+    try {
+      const el = document.querySelector(selector);
+      if (el) return el;
+    } catch(e) {}
+
+    // 2. Fall back: walk all elements and match by trimmed text
+    if (controlText) {
+      const trimmed = controlText.trim();
+      const candidates = document.querySelectorAll(
+        'h1,h2,h3,h4,h5,h6,p,a,button,span,li,td,th,label,div'
+      );
+      for (const el of candidates) {
+        // Only check leaf-ish nodes (no deeply nested children to avoid containers)
+        if (el.childElementCount <= 2 && el.innerText && el.innerText.trim() === trimmed) {
+          console.log('[AB] Matched element by text content fallback:', el);
+          return el;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  async function track(variantId, type) {
     try {
       await fetch(`${BASE_URL}/api/events`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ variantId, type, userId })
       });
-    } catch(e) {
-      console.error('[AB Testing SDK] Failed to track event', e);
-    }
+    } catch(e) {}
   }
 
-  async function init() {
+  async function applyTests() {
+    let tests;
     try {
       const res = await fetch(`${BASE_URL}/api/tests?projectId=${PROJECT_ID}`);
       const data = await res.json();
-      const tests = data.tests || [];
+      tests = data.tests || [];
+    } catch(e) {
+      console.warn('[AB] Could not fetch tests:', e);
+      return;
+    }
 
-      window.abTestVariants = window.abTestVariants || {};
+    for (const test of tests) {
+      const score = bucket(`${userId}-${test.id}`);
 
-      tests.forEach(test => {
-        // Hash to 0-99
-        const score = hash(`${userId}-${test.id}`) % 100;
-        
-        // Find which variant to assign
-        let cumulative = 0;
-        let chosenVariant = null;
+      // Assign variant deterministically
+      let cumulative = 0;
+      let chosen = null;
+      for (const v of test.variants) {
+        cumulative += v.traffic;
+        if (score < cumulative) { chosen = v; break; }
+      }
+      if (!chosen) chosen = test.variants[0];
 
-        for (const variant of test.variants) {
-          cumulative += variant.traffic;
-          if (score < cumulative) {
-            chosenVariant = variant;
-            break;
-          }
+      console.log(`[AB] Test "${test.name}" | score=${score} | assigned="${chosen.name}" | selector="${test.fingerprint}"`);
+
+      // Track impression
+      track(chosen.id, 'view');
+
+      // Apply DOM mutation if NOT the control
+      const isControl = chosen.name.toLowerCase() === 'control';
+      if (!isControl && chosen.content) {
+        const controlVariant = test.variants.find(v => v.name.toLowerCase() === 'control');
+        const controlText = controlVariant ? controlVariant.content : null;
+
+        const el = findElement(test.fingerprint, controlText);
+        if (el) {
+          console.log(`[AB] Applying variant "${chosen.name}" to element:`, el, `→ "${chosen.content}"`);
+          el.innerText = chosen.content;
+        } else {
+          console.warn(`[AB] Could not find element for test "${test.name}". Selector: "${test.fingerprint}"`);
         }
+      }
 
-        if (!chosenVariant) chosenVariant = test.variants[0]; // fallback Control
-        window.abTestVariants[test.id] = chosenVariant.id;
-
-        // Apply mutation if it's not the control and content exists
-        if (chosenVariant.name.toLowerCase() !== 'control' && chosenVariant.content) {
-            const el = document.querySelector(test.fingerprint);
-            if (el) {
-                // save original just in case
-                el.setAttribute('data-ab-original', el.innerText);
-                el.innerText = chosenVariant.content;
+      // Conversion tracking
+      if (test.goal === 'click' && test.goalTarget) {
+        document.addEventListener('click', (e) => {
+          try {
+            if (e.target.matches(test.goalTarget) || e.target.closest(test.goalTarget)) {
+              track(chosen.id, 'conversion');
             }
-        }
-
-        // Track view
-        trackEvent(chosenVariant.id, 'view');
-
-        // Setup conversion tracking
-        if (test.goal === 'click' && test.goalTarget) {
-            document.addEventListener('click', (e) => {
-                if (e.target.matches(test.goalTarget) || e.target.closest(test.goalTarget)) {
-                    trackEvent(chosenVariant.id, 'conversion');
-                }
-            });
-        }
-      });
-    } catch (e) {
-      console.error('[AB Testing SDK] Initialization failed', e);
+          } catch(err) {}
+        });
+      }
     }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', applyTests);
   } else {
-    init();
+    applyTests();
   }
 })();

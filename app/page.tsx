@@ -1,64 +1,145 @@
-import Image from "next/image";
+import prisma from '@/prisma/db';
+import { revalidatePath } from 'next/cache';
+import { Activity, MousePointerClick, BarChart3, Plus, ArrowRight, LayoutDashboard } from 'lucide-react';
 
-export default function Home() {
+export default async function Dashboard() {
+  const projects = await prisma.project.findMany({
+    include: { tests: { include: { variants: { include: { events: true } } } } }
+  });
+
+  async function createProject(formData: FormData) {
+    'use server';
+    const name = formData.get('name') as string;
+    const url = formData.get('url') as string;
+    if (name && url) {
+      await prisma.project.create({ data: { name, url } });
+      revalidatePath('/');
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#0A0A0B] text-white font-sans selection:bg-blue-500/30">
+      <nav className="border-b border-white/10 bg-black/50 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <Activity className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-semibold tracking-tight text-lg bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">A/B Engine</span>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-6 py-12">
+        {projects.length === 0 ? (
+          <div className="max-w-md mx-auto mt-20 p-8 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <h2 className="text-2xl font-semibold mb-2">Welcome to A/B Engine</h2>
+            <p className="text-gray-400 mb-8 max-w-sm">Create your first project to get your integration snippet and start running AI-powered A/B tests.</p>
+            
+            <form action={createProject} className="space-y-4 relative z-10">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Project Name</label>
+                <input name="name" required placeholder="e.g. My Next.js Blog" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-blue-500/50 transition-colors text-white placeholder-gray-600" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Site URL</label>
+                <input name="url" required placeholder="https://example.com" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-blue-500/50 transition-colors text-white placeholder-gray-600" />
+              </div>
+              <button className="w-full py-3 rounded-xl bg-white text-black font-medium hover:bg-gray-100 transition-colors flex items-center justify-center gap-2 group">
+                Create Project
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="space-y-12">
+            {projects.map(project => (
+              <div key={project.id} className="space-y-6">
+                <div className="flex items-end justify-between border-b border-white/10 pb-6">
+                  <div>
+                    <h1 className="text-3xl font-semibold tracking-tight mb-2">{project.name}</h1>
+                    <a href={project.url} target="_blank" className="text-blue-400 hover:text-blue-300 text-sm transition-colors">{project.url}</a>
+                  </div>
+                  
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-4 max-w-md">
+                    <p className="text-xs text-gray-400 mb-2 font-mono uppercase">Installation Snippet</p>
+                    <code className="text-xs text-green-400 font-mono break-all line-clamp-2 select-all">
+                      {`<script src="http://localhost:3000/sdk.js" data-project-id="${project.id}"></script>`}
+                    </code>
+                  </div>
+                </div>
+
+                {project.tests.length === 0 ? (
+                  <div className="py-12 text-center rounded-2xl border border-dashed border-white/20 bg-white/[0.02]">
+                    <LayoutDashboard className="w-10 h-10 text-gray-600 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-white mb-2">No tests running</h3>
+                    <p className="text-gray-400 mb-6 max-w-md mx-auto">Install the snippet on your site, visit your site, and add <code className="bg-black text-xs px-2 py-1 rounded">?ab_admin=true</code> to the URL to create your first test visually.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {project.tests.map(test => {
+                      const totalEvents = test.variants.reduce((acc, v) => acc + v.events.length, 0);
+                      const totalConversions = test.variants.reduce((acc, v) => acc + v.events.filter(e => e.type === 'conversion').length, 0);
+                      
+                      return (
+                        <div key={test.id} className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:bg-white/[0.04] transition-colors">
+                          <div className="flex justify-between items-start mb-6">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse" />
+                                <span className="text-xs font-semibold text-emerald-500 uppercase tracking-wider">Live</span>
+                              </div>
+                              <h3 className="text-xl font-medium">{test.name}</h3>
+                              <p className="text-sm text-gray-500 mt-1 font-mono truncate max-w-xs">{test.fingerprint}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-gray-400 mb-1">Goal: <span className="text-white capitalize">{test.goal}</span></p>
+                              <p className="text-2xl font-light">{totalEvents} <span className="text-sm text-gray-500">hits</span></p>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-4">
+                            {test.variants.map((variant, idx) => {
+                              const views = variant.events.filter(e => e.type === 'view').length;
+                              const convs = variant.events.filter(e => e.type === 'conversion').length;
+                              const convRate = views > 0 ? ((convs / views) * 100).toFixed(1) : '0.0';
+                              const barWidth = Math.max(5, (views / Math.max(1, totalEvents)) * 100);
+
+                              return (
+                                <div key={variant.id} className="bg-black/30 rounded-xl p-4 border border-white/5">
+                                  <div className="flex justify-between items-end mb-3">
+                                    <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <div className={`w-3 h-3 rounded-sm ${idx === 0 ? 'bg-gray-500' : 'bg-blue-500'}`} />
+                                        <span className="font-medium text-sm text-gray-200">{variant.name}</span>
+                                      </div>
+                                      <p className="text-xs text-gray-500 truncate max-w-[200px]" title={variant.content}>{variant.content}</p>
+                                    </div>
+                                    <div className="text-right">
+                                      {test.goal === 'click' ? (
+                                        <div className="text-lg font-semibold text-white">{convRate}% <span className="text-xs text-gray-500 font-normal">CVR</span></div>
+                                      ) : (
+                                        <div className="text-lg font-semibold text-white">{views} <span className="text-xs text-gray-500 font-normal">Views</span></div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${idx === 0 ? 'bg-gray-500' : 'bg-blue-500'}`} style={{ width: `${barWidth}%` }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </main>
     </div>
   );

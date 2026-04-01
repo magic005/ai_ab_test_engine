@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
-});
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +15,7 @@ export async function POST(request: Request) {
 The page context is: "${context}".
 The user wants to A/B test this specific element text: "${elementText}".
 
-Provide exactly 3 variant suggestions. Return ONLY valid JSON in this format:
+Provide exactly 3 variant suggestions. Return ONLY valid JSON in this exact format with no extra text:
 {
   "variants": [
     { "text": "Suggestion 1", "rationale": "Why this works" },
@@ -26,19 +24,21 @@ Provide exactly 3 variant suggestions. Return ONLY valid JSON in this format:
   ]
 }`;
 
-    const chatCompletion = await groq.chat.completions.create({
+    const completion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'llama3-8b-8192', // Replace with a fast/available model
-      response_format: { type: "json_object" },
+      model: 'llama-3.1-8b-instant',
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+      max_tokens: 512,
     });
 
-    const content = chatCompletion.choices[0]?.message?.content || '{}';
+    const content = completion.choices[0]?.message?.content || '{}';
     const parsed = JSON.parse(content);
 
     return NextResponse.json(parsed);
 
-  } catch(e) {
-    console.error('Groq Generation Error:', e);
+  } catch (e: any) {
+    console.error('Groq Generation Error:', e?.message || e);
     return NextResponse.json({ error: 'Failed to generate variants' }, { status: 500 });
   }
 }
