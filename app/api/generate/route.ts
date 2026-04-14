@@ -4,7 +4,7 @@ import Groq from 'groq-sdk';
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const SHORT_MODEL = 'llama-3.1-8b-instant';
-const LONG_MODEL = 'llama-3.1-70b-versatile';
+const LONG_MODEL = 'llama-3.3-70b-versatile';
 const LONG_TEXT_THRESHOLD = 300;
 
 export async function POST(request: Request) {
