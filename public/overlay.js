@@ -268,6 +268,7 @@
   let selectedSelector = '';
   let generatedVariants = [];
   let chosenVariant = null;
+  let originalFullText = '';
 
   // --- Element refs ---
   const step1 = document.getElementById('ab-step-1');
@@ -347,14 +348,16 @@
     selectedElement = e.target;
     selectedSelector = getUniqueSelector(selectedElement);
     selectedElement.classList.add('ab-selected-highlight');
-    originalTextDiv.textContent = selectedElement.innerText.trim().slice(0, 200);
+    originalFullText = selectedElement.innerText.trim();
+    const preview = originalFullText.length > 200 ? originalFullText.slice(0, 200) + '…' : originalFullText;
+    originalTextDiv.textContent = preview;
     showStep(2);
     btnSelect.disabled = false;
     btnSelect.textContent = 'Select Element';
   }, true);
 
   btnMagic.addEventListener('click', async () => {
-    const text = originalTextDiv.textContent;
+    const text = originalFullText;
     if (!text) return;
     btnMagic.disabled = true;
     btnMagic.innerHTML = '<span class="ab-spinner"></span>Generating variants...';
@@ -414,7 +417,7 @@
           fingerprint: selectedSelector,
           goal,
           goalTarget: goal === 'click' ? selectedSelector : '',
-          controlText: originalTextDiv.textContent,
+          controlText: originalFullText,
           variantText: chosenVariant
         })
       });

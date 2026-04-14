@@ -106,8 +106,36 @@
 
         const el = findElement(test.fingerprint, controlText);
         if (el) {
-          console.log(`[AB] Applying variant "${chosen.name}" to element:`, el, `→ "${chosen.content}"`);
-          el.innerText = chosen.content;
+          console.log(`[AB] Applying variant "${chosen.name}" to element:`, el);
+          if (el.childElementCount === 0) {
+            // Pure text node — safe to replace directly
+            el.innerText = chosen.content;
+          } else {
+            // Element has child HTML (links, bold, spans etc.)
+            // Replace only the text nodes to preserve structure where possible,
+            // falling back to innerText if the variant text is substantially different in length
+            const originalText = el.innerText.trim();
+            const ratio = chosen.content.length / Math.max(originalText.length, 1);
+            if (ratio > 0.5 && ratio < 2) {
+              // Similar length — walk text nodes and distribute new content
+              const textNodes = [];
+              const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+              let node;
+              while ((node = walker.nextNode())) textNodes.push(node);
+              if (textNodes.length === 1) {
+                textNodes[0].textContent = chosen.content;
+              } else {
+                // Multiple text nodes — replace the largest one with full variant,
+                // blank the rest to avoid duplication
+                const largest = textNodes.reduce((a, b) => a.textContent.length >= b.textContent.length ? a : b);
+                largest.textContent = chosen.content;
+                textNodes.forEach(n => { if (n !== largest) n.textContent = ''; });
+              }
+            } else {
+              // Very different length — just replace innerText
+              el.innerText = chosen.content;
+            }
+          }
         } else {
           console.warn(`[AB] Could not find element for test "${test.name}". Selector: "${test.fingerprint}"`);
         }
