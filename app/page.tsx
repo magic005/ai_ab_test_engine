@@ -114,7 +114,15 @@ export default async function Dashboard() {
                                         <div className={`w-3 h-3 rounded-sm ${idx === 0 ? 'bg-gray-500' : 'bg-blue-500'}`} />
                                         <span className="font-medium text-sm text-gray-200">{variant.name}</span>
                                       </div>
-                                      <p className="text-xs text-gray-500 truncate max-w-[200px]" title={variant.content}>{variant.content}</p>
+                                      <p className="text-xs text-gray-500 truncate max-w-[200px]" title={variant.content}>
+                                        {(() => {
+                                          try {
+                                            const p = JSON.parse(variant.content);
+                                            if (p.type === 'position') return `Moved → ${p.parentSelector}`;
+                                          } catch {}
+                                          return variant.content;
+                                        })()}
+                                      </p>
                                     </div>
                                     <div className="text-right">
                                       {test.goal === 'click' ? (

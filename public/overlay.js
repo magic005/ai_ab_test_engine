@@ -240,6 +240,7 @@
         <div id="ab-original-text" class="ab-original-box"></div>
 
         <button class="ab-btn ab-btn-primary" id="ab-btn-magic">Generate AI Variants</button>
+        <button class="ab-btn ab-btn-ghost" id="ab-btn-drag" style="margin-top:8px;">↕ Drag to Reposition</button>
         <button class="ab-btn ab-btn-ghost" id="ab-btn-reselect">Select a different element</button>
       </div>
 
@@ -258,6 +259,26 @@
         <button class="ab-btn ab-btn-success" id="ab-btn-launch">Launch 50/50 Test</button>
         <button class="ab-btn ab-btn-ghost" id="ab-btn-back">Back</button>
       </div>
+
+      <div id="ab-step-4" style="display:none;">
+        <div class="ab-status">
+          <span class="ab-status-dot" style="background:#f59e0b;"></span>
+          <span id="ab-drag-status">Drag the element to a new position</span>
+        </div>
+        <p class="ab-desc">Drag the highlighted element and drop it before or after any block on the page. A blue line shows where it will land.</p>
+
+        <div id="ab-pos-confirm" style="display:none;">
+          <hr class="ab-divider" />
+          <label class="ab-label">Conversion Goal</label>
+          <select id="ab-pos-goal-type" class="ab-select">
+            <option value="click">Track clicks on selected element</option>
+            <option value="pageview">Track pageviews (default)</option>
+          </select>
+          <button class="ab-btn ab-btn-success" id="ab-btn-pos-launch">Launch 50/50 Test</button>
+        </div>
+
+        <button class="ab-btn ab-btn-ghost" id="ab-btn-cancel-drag" style="margin-top:8px;">Cancel</button>
+      </div>
     </div>
   `;
   document.body.appendChild(panel);
@@ -270,30 +291,44 @@
   let chosenVariant = null;
   let originalFullText = '';
 
+  // drag-to-reposition state
+  let testType = 'text';
+  let dragOriginParent = null;
+  let dragOriginNextSibling = null;
+  let variantPositionData = null;
+  let dropTargetEls = [];
+  let dropIndicator = null;
+
   // --- Element refs ---
   const step1 = document.getElementById('ab-step-1');
   const step2 = document.getElementById('ab-step-2');
   const step3 = document.getElementById('ab-step-3');
+  const step4 = document.getElementById('ab-step-4');
   const btnSelect = document.getElementById('ab-btn-select');
   const btnReselect = document.getElementById('ab-btn-reselect');
+  const btnDrag = document.getElementById('ab-btn-drag');
   const btnMagic = document.getElementById('ab-btn-magic');
   const btnLaunch = document.getElementById('ab-btn-launch');
   const btnBack = document.getElementById('ab-btn-back');
+  const btnCancelDrag = document.getElementById('ab-btn-cancel-drag');
+  const btnPosLaunch = document.getElementById('ab-btn-pos-launch');
   const btnClose = document.getElementById('ab-panel-close');
   const originalTextDiv = document.getElementById('ab-original-text');
   const suggestionsDiv = document.getElementById('ab-suggestions');
 
   // --- Utilities ---
   function getUniqueSelector(el) {
+    if (!el || el === document.body) return 'body';
     if (el.id) return '#' + el.id;
     let path = [];
-    while (el && el.nodeType === Node.ELEMENT_NODE) {
-      let sel = el.nodeName.toLowerCase();
-      if (el.id) { sel += '#' + el.id; path.unshift(sel); break; }
-      const classes = Array.from(el.classList).filter(c => !c.startsWith('ab-'));
+    let cur = el;
+    while (cur && cur.nodeType === Node.ELEMENT_NODE) {
+      let sel = cur.nodeName.toLowerCase();
+      if (cur.id) { sel += '#' + cur.id; path.unshift(sel); break; }
+      const classes = Array.from(cur.classList).filter(c => !c.startsWith('ab-'));
       if (classes.length) sel += '.' + classes.slice(0, 2).join('.');
       path.unshift(sel);
-      el = el.parentNode;
+      cur = cur.parentNode;
     }
     return path.join(' > ');
   }
@@ -303,10 +338,130 @@
   }
 
   function showStep(n) {
-    [step1, step2, step3].forEach((s, i) => s.style.display = i === n - 1 ? 'block' : 'none');
+    [step1, step2, step3, step4].forEach((s, i) => s.style.display = i === n - 1 ? 'block' : 'none');
   }
 
-  // --- Handlers ---
+  // --- Drag-to-reposition handlers (named so they can be removed) ---
+  function onDragStart(e) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', ''); // required for Firefox
+    selectedElement.style.opacity = '0.4';
+  }
+
+  function onDragEnd() {
+    selectedElement.style.opacity = '0.85';
+    if (dropIndicator) dropIndicator.style.display = 'none';
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    dropIndicator.style.left = rect.left + 'px';
+    dropIndicator.style.width = rect.width + 'px';
+    dropIndicator.style.top = (e.clientY < midY ? rect.top : rect.bottom) - 1 + 'px';
+    dropIndicator.style.display = 'block';
+  }
+
+  function onDragLeave(e) {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      dropIndicator.style.display = 'none';
+    }
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    if (dropIndicator) dropIndicator.style.display = 'none';
+    const target = e.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const insertBefore = e.clientY < rect.top + rect.height / 2;
+
+    const newParent = target.parentNode;
+    const newBefore = insertBefore ? target : (target.nextSibling || null);
+
+    // Skip no-op drops
+    if (newBefore === selectedElement || newBefore === dragOriginNextSibling) return;
+
+    newParent.insertBefore(selectedElement, newBefore);
+
+    variantPositionData = {
+      type: 'position',
+      parentSelector: getUniqueSelector(newParent),
+      beforeSelector: newBefore ? getUniqueSelector(newBefore) : null
+    };
+
+    document.getElementById('ab-drag-status').textContent = 'Position set — looks good?';
+    document.getElementById('ab-pos-confirm').style.display = 'block';
+  }
+
+  // --- Drag mode enable/cancel ---
+  function enableDragMode() {
+    testType = 'position';
+    dragOriginParent = selectedElement.parentNode;
+    dragOriginNextSibling = selectedElement.nextSibling;
+
+    dropIndicator = document.createElement('div');
+    dropIndicator.style.cssText = 'position:fixed;height:3px;background:#3b82f6;pointer-events:none;z-index:2147483646;border-radius:2px;display:none;';
+    document.body.appendChild(dropIndicator);
+
+    selectedElement.setAttribute('draggable', 'true');
+    selectedElement.style.cursor = 'grab';
+    selectedElement.style.outline = '2px dashed #f59e0b';
+    selectedElement.style.outlineOffset = '3px';
+    selectedElement.style.opacity = '0.85';
+    selectedElement.classList.remove('ab-selected-highlight');
+
+    selectedElement.addEventListener('dragstart', onDragStart);
+    selectedElement.addEventListener('dragend', onDragEnd);
+
+    dropTargetEls = Array.from(document.querySelectorAll(
+      'body > *, main *, section *, article *, div, p, h1, h2, h3, h4, h5, h6, ul, ol, li, header, footer, nav'
+    )).filter(el => el !== selectedElement && !panel.contains(el) && !selectedElement.contains(el));
+
+    dropTargetEls.forEach(el => {
+      el.addEventListener('dragover', onDragOver);
+      el.addEventListener('dragleave', onDragLeave);
+      el.addEventListener('drop', onDrop);
+    });
+
+    showStep(4);
+  }
+
+  function cancelDragMode() {
+    // Restore original DOM position
+    dragOriginParent.insertBefore(selectedElement, dragOriginNextSibling || null);
+
+    selectedElement.removeAttribute('draggable');
+    selectedElement.style.cursor = '';
+    selectedElement.style.outline = '';
+    selectedElement.style.outlineOffset = '';
+    selectedElement.style.opacity = '';
+    selectedElement.removeEventListener('dragstart', onDragStart);
+    selectedElement.removeEventListener('dragend', onDragEnd);
+
+    dropTargetEls.forEach(el => {
+      el.removeEventListener('dragover', onDragOver);
+      el.removeEventListener('dragleave', onDragLeave);
+      el.removeEventListener('drop', onDrop);
+    });
+    dropTargetEls = [];
+
+    if (dropIndicator) { dropIndicator.remove(); dropIndicator = null; }
+
+    testType = 'text';
+    variantPositionData = null;
+    dragOriginParent = null;
+    dragOriginNextSibling = null;
+
+    document.getElementById('ab-drag-status').textContent = 'Drag the element to a new position';
+    document.getElementById('ab-pos-confirm').style.display = 'none';
+
+    selectedElement.classList.add('ab-selected-highlight');
+    showStep(2);
+  }
+
+  // --- Panel button handlers ---
   btnClose.addEventListener('click', () => {
     const url = new URL(window.location.href);
     url.searchParams.delete('ab_admin');
@@ -327,6 +482,9 @@
     btnSelect.textContent = 'Hovering — click an element...';
     btnSelect.disabled = true;
   });
+
+  btnDrag.addEventListener('click', enableDragMode);
+  btnCancelDrag.addEventListener('click', cancelDragMode);
 
   document.addEventListener('mouseover', (e) => {
     if (!selectionMode || panel.contains(e.target)) return;
@@ -356,6 +514,7 @@
     btnSelect.textContent = 'Select Element';
   }, true);
 
+  // --- Text variant generation (unchanged) ---
   btnMagic.addEventListener('click', async () => {
     const text = originalFullText;
     if (!text) return;
@@ -429,6 +588,45 @@
       alert('Error: ' + err.message);
       btnLaunch.disabled = false;
       btnLaunch.textContent = 'Launch 50/50 Test';
+    }
+  });
+
+  // --- Position test launch ---
+  btnPosLaunch.addEventListener('click', async () => {
+    if (!variantPositionData) return;
+    const testName = document.getElementById('ab-test-name').value || 'Position Test';
+    const goal = document.getElementById('ab-pos-goal-type').value;
+    btnPosLaunch.disabled = true;
+    btnPosLaunch.innerHTML = '<span class="ab-spinner"></span>Launching...';
+
+    const controlContent = JSON.stringify({
+      type: 'position',
+      parentSelector: getUniqueSelector(dragOriginParent),
+      beforeSelector: dragOriginNextSibling ? getUniqueSelector(dragOriginNextSibling) : null
+    });
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/tests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: PROJECT_ID,
+          name: testName,
+          fingerprint: selectedSelector,
+          goal,
+          goalTarget: goal === 'click' ? selectedSelector : '',
+          controlText: controlContent,
+          variantText: JSON.stringify(variantPositionData)
+        })
+      });
+      if (!res.ok) throw new Error('Failed to save test');
+      const url = new URL(window.location.href);
+      url.searchParams.delete('ab_admin');
+      window.location.href = url.toString();
+    } catch (err) {
+      alert('Error: ' + err.message);
+      btnPosLaunch.disabled = false;
+      btnPosLaunch.textContent = 'Launch 50/50 Test';
     }
   });
 })();
