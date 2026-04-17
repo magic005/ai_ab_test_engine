@@ -2,6 +2,8 @@
   const SCRIPT_URL = new URL(document.currentScript.src);
   const BASE_URL = SCRIPT_URL.origin;
   const PROJECT_ID = document.currentScript.getAttribute('data-project-id');
+  const MERMAID_PREFIX = 'MERMAID:';
+  const MERMAID_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
 
   if (!PROJECT_ID) {
     console.warn('[AB] Missing data-project-id on script tag.');
@@ -36,20 +38,17 @@
 
   // Find element by selector, falling back to text-content match
   function findElement(selector, controlText) {
-    // 1. Try the stored CSS selector directly
     try {
       const el = document.querySelector(selector);
       if (el) return el;
     } catch(e) {}
 
-    // 2. Fall back: walk all elements and match by trimmed text
     if (controlText) {
       const trimmed = controlText.trim();
       const candidates = document.querySelectorAll(
         'h1,h2,h3,h4,h5,h6,p,a,button,span,li,td,th,label,div'
       );
       for (const el of candidates) {
-        // Only check leaf-ish nodes (no deeply nested children to avoid containers)
         if (el.childElementCount <= 2 && el.innerText && el.innerText.trim() === trimmed) {
           console.log('[AB] Matched element by text content fallback:', el);
           return el;
@@ -58,6 +57,51 @@
     }
 
     return null;
+  }
+
+  // Lazy-load Mermaid.js from CDN, then call back
+  let mermaidLoaded = false;
+  let mermaidCallbacks = [];
+  function withMermaid(fn) {
+    if (mermaidLoaded) { fn(); return; }
+    mermaidCallbacks.push(fn);
+    if (document.getElementById('ab-mermaid-script')) return; // already loading
+    const s = document.createElement('script');
+    s.id = 'ab-mermaid-script';
+    s.src = MERMAID_CDN;
+    s.onload = () => {
+      window.mermaid.initialize({ startOnLoad: false, theme: 'default' });
+      mermaidLoaded = true;
+      mermaidCallbacks.forEach(cb => cb());
+      mermaidCallbacks = [];
+    };
+    document.head.appendChild(s);
+  }
+
+  // Replace an element with a rendered Mermaid diagram
+  function applyDiagram(el, diagramDef) {
+    withMermaid(() => {
+      const id = 'ab-diagram-' + Math.random().toString(36).slice(2);
+      const wrapper = document.createElement('div');
+      wrapper.id = id;
+      wrapper.style.cssText = 'width:100%;overflow-x:auto;padding:12px 0;';
+
+      const inner = document.createElement('div');
+      inner.className = 'mermaid';
+      inner.textContent = diagramDef;
+      wrapper.appendChild(inner);
+
+      // Replace the original element in-place, preserving its position in the DOM
+      el.parentNode.insertBefore(wrapper, el);
+      el.style.display = 'none'; // hide original, keep for control reference
+
+      window.mermaid.run({ nodes: [inner] }).catch(err => {
+        console.warn('[AB] Mermaid render error:', err);
+        // Fallback: show a code block with the raw definition
+        inner.innerHTML = '<pre style="background:#f6f8fa;padding:12px;border-radius:6px;font-size:12px;overflow-x:auto;">' +
+          diagramDef.replace(/</g, '&lt;') + '</pre>';
+      });
+    });
   }
 
   async function track(variantId, type) {
@@ -84,7 +128,6 @@
     for (const test of tests) {
       const score = bucket(`${userId}-${test.id}`);
 
-      // Assign variant deterministically
       let cumulative = 0;
       let chosen = null;
       for (const v of test.variants) {
@@ -95,45 +138,44 @@
 
       console.log(`[AB] Test "${test.name}" | score=${score} | assigned="${chosen.name}" | selector="${test.fingerprint}"`);
 
-      // Track impression
       track(chosen.id, 'view');
 
-      // Apply DOM mutation if NOT the control
       const isControl = chosen.name.toLowerCase() === 'control';
       if (!isControl && chosen.content) {
         const controlVariant = test.variants.find(v => v.name.toLowerCase() === 'control');
         const controlText = controlVariant ? controlVariant.content : null;
-
         const el = findElement(test.fingerprint, controlText);
+
         if (el) {
-          console.log(`[AB] Applying variant "${chosen.name}" to element:`, el);
-          if (el.childElementCount === 0) {
-            // Pure text node — safe to replace directly
-            el.innerText = chosen.content;
+          // --- Diagram variant ---
+          if (chosen.content.startsWith(MERMAID_PREFIX)) {
+            const diagramDef = chosen.content.slice(MERMAID_PREFIX.length);
+            console.log(`[AB] Applying diagram variant to element:`, el);
+            applyDiagram(el, diagramDef);
+
+          // --- Text variant ---
           } else {
-            // Element has child HTML (links, bold, spans etc.)
-            // Replace only the text nodes to preserve structure where possible,
-            // falling back to innerText if the variant text is substantially different in length
-            const originalText = el.innerText.trim();
-            const ratio = chosen.content.length / Math.max(originalText.length, 1);
-            if (ratio > 0.5 && ratio < 2) {
-              // Similar length — walk text nodes and distribute new content
-              const textNodes = [];
-              const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
-              let node;
-              while ((node = walker.nextNode())) textNodes.push(node);
-              if (textNodes.length === 1) {
-                textNodes[0].textContent = chosen.content;
-              } else {
-                // Multiple text nodes — replace the largest one with full variant,
-                // blank the rest to avoid duplication
-                const largest = textNodes.reduce((a, b) => a.textContent.length >= b.textContent.length ? a : b);
-                largest.textContent = chosen.content;
-                textNodes.forEach(n => { if (n !== largest) n.textContent = ''; });
-              }
-            } else {
-              // Very different length — just replace innerText
+            console.log(`[AB] Applying text variant "${chosen.name}" to element:`, el);
+            if (el.childElementCount === 0) {
               el.innerText = chosen.content;
+            } else {
+              const originalText = el.innerText.trim();
+              const ratio = chosen.content.length / Math.max(originalText.length, 1);
+              if (ratio > 0.5 && ratio < 2) {
+                const textNodes = [];
+                const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+                let node;
+                while ((node = walker.nextNode())) textNodes.push(node);
+                if (textNodes.length === 1) {
+                  textNodes[0].textContent = chosen.content;
+                } else {
+                  const largest = textNodes.reduce((a, b) => a.textContent.length >= b.textContent.length ? a : b);
+                  largest.textContent = chosen.content;
+                  textNodes.forEach(n => { if (n !== largest) n.textContent = ''; });
+                }
+              } else {
+                el.innerText = chosen.content;
+              }
             }
           }
         } else {

@@ -240,6 +240,7 @@
         <div id="ab-original-text" class="ab-original-box"></div>
 
         <button class="ab-btn ab-btn-primary" id="ab-btn-magic">Generate AI Variants</button>
+        <button class="ab-btn ab-btn-ghost" id="ab-btn-diagram">Generate as Diagram</button>
         <button class="ab-btn ab-btn-ghost" id="ab-btn-reselect">Select a different element</button>
       </div>
 
@@ -277,6 +278,7 @@
   const btnSelect = document.getElementById('ab-btn-select');
   const btnReselect = document.getElementById('ab-btn-reselect');
   const btnMagic = document.getElementById('ab-btn-magic');
+  const btnDiagram = document.getElementById('ab-btn-diagram');
   const btnLaunch = document.getElementById('ab-btn-launch');
   const btnBack = document.getElementById('ab-btn-back');
   const btnClose = document.getElementById('ab-panel-close');
@@ -386,17 +388,65 @@
     suggestionsDiv.innerHTML = '';
     generatedVariants.forEach((v) => {
       const card = document.createElement('div');
-      card.className = 'ab-variant-card';
-      card.innerHTML = `<div class="ab-variant-text">${v.text}</div><div class="ab-variant-rationale">${v.rationale}</div>`;
-      card.addEventListener('click', () => {
-        document.querySelectorAll('.ab-variant-card').forEach(c => c.classList.remove('selected'));
-        card.classList.add('selected');
-        chosenVariant = v.text;
-        if (selectedElement) selectedElement.innerText = chosenVariant;
-      });
+      card.className = 'ab-variant-card' + (v === generatedVariants[0] && v.isDiagram ? ' selected' : '');
+
+      if (v.isDiagram) {
+        // Strip the MERMAID: prefix for display
+        const MERMAID_PREFIX = 'MERMAID:';
+        const displayCode = v.text.startsWith(MERMAID_PREFIX) ? v.text.slice(MERMAID_PREFIX.length) : v.text;
+        card.innerHTML = `
+          <div class="ab-variant-text" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="background:#1e3a5f;color:#93c5fd;font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:4px;text-transform:uppercase;">Diagram</span>
+            Mermaid Flowchart Variant
+          </div>
+          <pre style="background:#0d1117;color:#79c0ff;font-size:11px;border-radius:6px;padding:10px;overflow-x:auto;white-space:pre;margin:0;line-height:1.5;">${displayCode.replace(/</g,'&lt;')}</pre>
+          <div class="ab-variant-rationale" style="margin-top:8px;">${v.rationale}</div>
+        `;
+        // Auto-select the diagram card
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.ab-variant-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          chosenVariant = v.text;
+        });
+      } else {
+        card.innerHTML = `<div class="ab-variant-text">${v.text}</div><div class="ab-variant-rationale">${v.rationale}</div>`;
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.ab-variant-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          chosenVariant = v.text;
+          if (selectedElement) selectedElement.innerText = chosenVariant;
+        });
+      }
       suggestionsDiv.appendChild(card);
     });
   }
+
+  // --- Diagram generation ---
+  btnDiagram.addEventListener('click', async () => {
+    const text = originalFullText;
+    if (!text) return;
+    btnDiagram.disabled = true;
+    btnDiagram.innerHTML = '<span class="ab-spinner"></span>Generating diagram...';
+    try {
+      const res = await fetch(`${BASE_URL}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: document.title, elementText: text, mode: 'diagram' })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.diagram) throw new Error(data.error || 'No diagram returned');
+      // Treat the single diagram as the chosen variant, bypass card selection
+      generatedVariants = [{ text: data.diagram, rationale: data.rationale, isDiagram: true }];
+      chosenVariant = data.diagram;
+      renderVariants();
+      showStep(3);
+    } catch (err) {
+      alert('Failed to generate diagram: ' + err.message);
+    } finally {
+      btnDiagram.disabled = false;
+      btnDiagram.textContent = 'Generate as Diagram';
+    }
+  });
 
   btnBack.addEventListener('click', () => showStep(2));
 
