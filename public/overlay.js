@@ -552,17 +552,19 @@
       card.className = 'ab-variant-card' + (isAutoSelected ? ' selected' : '');
 
       if (v.isGame) {
-        const htmlContent = v.text.startsWith('GAME:') ? v.text.slice(5) : v.text;
-        const escaped = htmlContent.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const codeContent = v.text.startsWith('GAME:') ? v.text.slice(5) : v.text;
+        const escaped = codeContent.replace(/</g,'&lt;').replace(/>/g,'&gt;');
         card.innerHTML = `
           <div class="ab-variant-text" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
             <span style="background:#14532d;color:#86efac;font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:4px;text-transform:uppercase;">Game</span>
-            Interactive Quiz Variant
+            GameEngine Exploration Level
           </div>
           <div class="ab-variant-rationale" style="margin-bottom:8px;">${v.rationale}</div>
-          <iframe srcdoc="${escaped}" sandbox="allow-scripts"
-            style="width:100%;height:320px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;background:#0f172a;"
-          ></iframe>
+          <pre style="background:#0d1117;color:#a3e635;font-size:10px;border-radius:6px;padding:10px;overflow:auto;max-height:220px;white-space:pre;margin:0;line-height:1.4;">${escaped}</pre>
+          <p style="font-size:11px;color:#64748b;margin:8px 0 0;">
+            This level will auto-run on the live page using the OCS GameEngine.
+            Walk around with WASD and press E near NPCs to learn the concepts.
+          </p>
         `;
         card.addEventListener('click', () => {
           document.querySelectorAll('.ab-variant-card').forEach(c => c.classList.remove('selected'));

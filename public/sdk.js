@@ -5,6 +5,9 @@
   const MERMAID_PREFIX = 'MERMAID:';
   const GAME_PREFIX = 'GAME:';
   const MERMAID_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+  // Baseurl of the host site (e.g. '' or '/pages-databaseguys-sprint4')
+  // Injected via data-site-baseurl on the script tag by Jekyll
+  const SITE_BASEURL = document.currentScript.getAttribute('data-site-baseurl') || '';
 
   if (!PROJECT_ID) {
     console.warn('[AB] Missing data-project-id on script tag.');
@@ -79,31 +82,82 @@
     document.head.appendChild(s);
   }
 
-  // Inject a sandboxed iframe containing the AI-generated HTML quiz game
-  function applyGame(el, htmlContent) {
+  // Inject a game runner using the OCS site's GameExecutor.
+  // The gameCode is a GameEngine JS module (imports + CustomLevel + exports).
+  function applyGame(el, gameCode) {
+    const id = 'ab-game-' + Math.random().toString(36).slice(2);
+    const siteOrigin = window.location.origin;
+    const runnerImport = siteOrigin + SITE_BASEURL + '/assets/js/pages/runners/index.js';
+
+    // Build compact game runner DOM (mirrors game.html with hide_edit: true)
     const wrapper = document.createElement('div');
+    wrapper.className = 'game-runner-container hide-editor';
+    wrapper.id = id;
     wrapper.style.cssText = 'width:100%;margin:12px 0;';
+    wrapper.innerHTML = `
+      <div class="compact-controls" style="display:flex;gap:6px;align-items:center;padding:6px;background:#1e293b;border-radius:6px 6px 0 0;">
+        <button type="button" class="runBtn" title="Start Game">&#9654; Play</button>
+        <button type="button" class="pauseBtn" title="Pause Game">&#9646;&#9646; Pause</button>
+        <button type="button" class="stopBtn" title="Stop Game">&#9632; Stop</button>
+        <button type="button" class="fullscreenBtn" title="Toggle Fullscreen">&#9974; Fullscreen</button>
+        <select class="engineVersionSelect" title="Select Engine Version">
+          <option value="GameEnginev1">Engine v1</option>
+          <option value="GameEnginev1.1" selected>Engine v1.1</option>
+        </select>
+        <select class="levelSelect"><option value="">Select Level...</option></select>
+      </div>
+      <div class="output-container">
+        <div class="control-panel" style="padding:4px 8px;background:#0f172a;font-size:12px;color:#94a3b8;">
+          Game Status: <span class="status-text">Not Started</span>
+        </div>
+        <div class="game-output" id="game-output-${id}" style="position:relative;">
+          <div id="game-container-${id}" class="gameContainer"
+            style="position:relative;width:100%;height:420px;overflow:hidden;background:#000;"></div>
+        </div>
+      </div>
+    `;
 
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'width:100%;border:none;border-radius:10px;display:block;';
-    iframe.setAttribute('sandbox', 'allow-scripts');
-    iframe.srcdoc = htmlContent;
-
-    // Auto-resize iframe to fit content once loaded
-    iframe.onload = () => {
-      try {
-        const h = iframe.contentDocument.body.scrollHeight;
-        iframe.style.height = (h + 32) + 'px';
-      } catch(e) {
-        iframe.style.height = '420px';
-      }
-    };
-    iframe.style.height = '420px'; // safe default before load
-
-    wrapper.appendChild(iframe);
     el.parentNode.insertBefore(wrapper, el);
     el.style.display = 'none';
-    console.log('[AB] Injected game iframe for element:', el);
+
+    import(runnerImport).then(({ BaseRunner, GameExecutor }) => {
+      const runBtn          = wrapper.querySelector('.runBtn');
+      const pauseBtn        = wrapper.querySelector('.pauseBtn');
+      const stopBtn         = wrapper.querySelector('.stopBtn');
+      const fullscreenBtn   = wrapper.querySelector('.fullscreenBtn');
+      const engineSelect    = wrapper.querySelector('.engineVersionSelect');
+      const levelSelect     = wrapper.querySelector('.levelSelect');
+      const statusText      = wrapper.querySelector('.status-text');
+      const gameOutput      = wrapper.querySelector('.game-output');
+
+      const gameExecutor = new GameExecutor({
+        getCode: () => gameCode,
+        updateStatus: s => { statusText.textContent = s; },
+        runBtn, pauseBtn, stopBtn, fullscreenBtn,
+        levelSelect, engineVersionSelect: engineSelect,
+        getGameContainer: () => document.getElementById('game-container-' + id),
+        getGameOutput:    () => gameOutput,
+        configuredCanvasHeight: 420,
+        path: SITE_BASEURL,
+      });
+
+      pauseBtn.disabled = true;
+      stopBtn.disabled  = true;
+
+      runBtn.addEventListener('click',        () => gameExecutor.run());
+      pauseBtn.addEventListener('click',      () => gameExecutor.togglePause());
+      stopBtn.addEventListener('click',       () => gameExecutor.stop());
+      fullscreenBtn.addEventListener('click', () => gameExecutor.toggleFullscreen());
+      gameExecutor.bindLevelSelector();
+
+      // Auto-start the game
+      gameExecutor.run();
+      console.log('[AB] Game runner injected for element:', el);
+
+    }).catch(err => {
+      console.error('[AB] Failed to load GameExecutor:', err);
+      wrapper.innerHTML = '<p style="padding:12px;color:#ef4444;background:#0f172a;">Game engine could not be loaded: ' + err.message + '</p>';
+    });
   }
 
   // Replace an element with a rendered Mermaid diagram

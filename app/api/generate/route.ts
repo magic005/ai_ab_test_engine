@@ -4,11 +4,24 @@ import Groq from 'groq-sdk';
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const SHORT_MODEL = 'llama-3.1-8b-instant';
-const LONG_MODEL = 'llama-3.3-70b-versatile';
+const LONG_MODEL  = 'llama-3.3-70b-versatile';
 const LONG_TEXT_THRESHOLD = 300;
 
-// Prefix used by SDK and overlay to identify diagram variants
 export const DIAGRAM_PREFIX = 'MERMAID:';
+export const GAME_PREFIX    = 'GAME:';
+
+// --- Sprite / background asset catalogs (OCS site-relative paths) ---
+const SPRITES: Record<string, { src: string; pixels: object; orientation: object; scale: number; down: object }> = {
+  r2:         { src: '/images/gamify/r2_idle.png',    pixels: { width: 505, height: 223 }, orientation: { rows: 1, columns: 3 }, scale: 8, down: { row: 0, start: 0, columns: 3 } },
+  tony:       { src: '/images/gamify/tony.png',       pixels: { width: 1000, height: 300 }, orientation: { rows: 1, columns: 4 }, scale: 6, down: { row: 0, start: 0, columns: 4 } },
+  schwabbman: { src: '/images/gamify/schwabbman.png', pixels: { width: 500, height: 500 },  orientation: { rows: 1, columns: 4 }, scale: 5, down: { row: 0, start: 0, columns: 4 } },
+};
+
+const BACKGROUNDS: Record<string, { src: string; pixels: object }> = {
+  desert: { src: '/images/gamify/desert.png',               pixels: { height: 580, width: 1038 } },
+  clouds: { src: '/images/gamebuilder/bg/clouds.jpg',       pixels: { height: 720, width: 1280 } },
+  alien:  { src: '/images/gamebuilder/bg/alien_planet.jpg', pixels: { height: 720, width: 1280 } },
+};
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +31,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing text context' }, { status: 400 });
     }
 
-    // --- Diagram mode: convert text block to Mermaid flowchart ---
+    // ----------------------------------------------------------------
+    // Diagram mode: convert text block to Mermaid flowchart
+    // ----------------------------------------------------------------
     if (mode === 'diagram') {
       const prompt = `You are an expert at converting written content into clear, concise Mermaid.js flowcharts.
 
@@ -51,84 +66,148 @@ Return ONLY valid JSON in this exact format:
         max_tokens: 1024,
       });
 
-      const raw = completion.choices[0]?.message?.content || '{}';
+      const raw    = completion.choices[0]?.message?.content || '{}';
       const parsed = JSON.parse(raw);
+      if (!parsed.diagram) return NextResponse.json({ error: 'Model did not return a diagram' }, { status: 500 });
 
-      if (!parsed.diagram) {
-        return NextResponse.json({ error: 'Model did not return a diagram' }, { status: 500 });
-      }
-
-      // Clean up: strip any accidental backticks or "mermaid" keyword the model may have included
-      const cleanDiagram = parsed.diagram
-        .replace(/^```(mermaid)?/gm, '')
-        .replace(/```$/gm, '')
-        .trim();
-
-      return NextResponse.json({
-        diagram: DIAGRAM_PREFIX + cleanDiagram,
-        rationale: parsed.rationale || 'Visual flowchart variant of the original text block.',
-      });
+      const cleanDiagram = parsed.diagram.replace(/^```(mermaid)?/gm, '').replace(/```$/gm, '').trim();
+      return NextResponse.json({ diagram: DIAGRAM_PREFIX + cleanDiagram, rationale: parsed.rationale || '' });
     }
 
-    // --- Game mode: generate a self-contained HTML quiz game from text ---
+    // ----------------------------------------------------------------
+    // Game mode: OCS GameEngine exploration level
+    // LLM outputs structured NPC/level data; server assembles boilerplate.
+    // ----------------------------------------------------------------
     if (mode === 'game') {
-      const prompt = `You are an expert educational game designer. Convert the following text into a complete, self-contained HTML quiz game.
+      const prompt = `You are an educational game designer. Extract key concepts from the following text and design an exploration game level.
 
 Page context: "${context}"
-
 Source text:
 """
 ${elementText}
 """
 
-Rules:
-- Output a SINGLE complete HTML document (<!DOCTYPE html>...to...html>) with inline <style> and <script>
-- Create 3-5 multiple choice questions directly based on facts, concepts, or steps in the text
-- Dark theme: background #0f172a, cards #1e293b, accent #3b82f6, text #f1f5f9
-- Font: system-ui or -apple-system
-- Show one question at a time with 4 answer choices (A/B/C/D)
-- Highlight correct (green #22c55e) and wrong (red #ef4444) on selection
-- Track score and show final screen with score/total and a message
-- The game must be fully self-contained — zero external imports, zero network requests
-- Make it visually clean and engaging; use smooth CSS transitions
-- Add a small title at the top summarizing the topic
-- The final score screen should include a "Well done!" or "Keep studying!" message depending on score
-- Do NOT reference any external files, CDN links, images, or APIs
+Extract 2-4 key concepts. Each concept becomes one NPC the player walks up to (WASD movement) and talks to (E key).
 
-Return ONLY valid JSON in this exact format (the html field must be the complete HTML string, properly escaped):
+Available NPC sprites: "r2", "tony", "schwabbman" — pick a different one per NPC.
+Available backgrounds: "desert", "clouds", "alien" — pick the best fit.
+
+Return ONLY valid JSON:
 {
-  "html": "<complete html document as a single string>",
-  "rationale": "One sentence on why an interactive quiz may outperform the static text paragraph"
-}`;
+  "background": "desert",
+  "levelName": "ConceptExplorer",
+  "rationale": "One sentence on why an interactive game may outperform static text",
+  "npcs": [
+    {
+      "id": "Short NPC name (concept-based)",
+      "sprite": "r2",
+      "positionX": 0.25,
+      "dialogues": [
+        "Accurate fact 1 about this concept (max 15 words).",
+        "Accurate fact 2 (max 15 words).",
+        "Accurate fact 3 (max 15 words)."
+      ]
+    }
+  ]
+}
+
+NPC positionX spacing: 2 NPCs → [0.3, 0.65], 3 NPCs → [0.25, 0.5, 0.75], 4 NPCs → [0.2, 0.4, 0.6, 0.8].
+Every NPC must have exactly 3 dialogues.`;
 
       const completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model: LONG_MODEL,
         response_format: { type: 'json_object' },
-        temperature: 0.4,
-        max_tokens: 4096,
+        temperature: 0.3,
+        max_tokens: 1200,
       });
 
       const raw = completion.choices[0]?.message?.content || '{}';
       let parsed: any;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return NextResponse.json({ error: 'Model returned invalid JSON' }, { status: 500 });
-      }
+      try { parsed = JSON.parse(raw); }
+      catch { return NextResponse.json({ error: 'Model returned invalid JSON' }, { status: 500 }); }
+      if (!parsed.npcs?.length) return NextResponse.json({ error: 'Model did not return npcs' }, { status: 500 });
 
-      if (!parsed.html) {
-        return NextResponse.json({ error: 'Model did not return a game' }, { status: 500 });
-      }
+      const bg         = BACKGROUNDS[parsed.background] || BACKGROUNDS.desert;
+      const levelName  = (parsed.levelName || 'ConceptExplorer').replace(/\s+/g, '');
+
+      // Build NPC class entries
+      const npcEntries = (parsed.npcs as any[]).map((npc: any) => {
+        const sp = SPRITES[npc.sprite] || SPRITES.r2;
+        return `  { class: Npc, data: {
+      id: ${JSON.stringify(npc.id)},
+      greeting: ${JSON.stringify((npc.dialogues?.[0] ?? 'Hello!') + ' (Press E to interact)')},
+      src: path + ${JSON.stringify(sp.src)},
+      SCALE_FACTOR: ${sp.scale}, ANIMATION_RATE: 100,
+      pixels: ${JSON.stringify(sp.pixels)},
+      INIT_POSITION: { x: width * ${npc.positionX}, y: height * 0.5 },
+      orientation: ${JSON.stringify(sp.orientation)},
+      down: ${JSON.stringify(sp.down)},
+      hitbox: { widthPercentage: 0.1, heightPercentage: 0.2 },
+      dialogues: ${JSON.stringify(npc.dialogues)},
+      reaction: function() { if (this.dialogueSystem) this.showReactionDialogue(); },
+    } }`;
+      });
+
+      // Assemble final GameEngine ES module — boilerplate is always correct
+      const gameCode = `import GameControl from '/assets/js/GameEnginev1.1/essentials/GameControl.js';
+import GameEnvBackground from '/assets/js/GameEnginev1.1/essentials/GameEnvBackground.js';
+import Player from '/assets/js/GameEnginev1.1/essentials/Player.js';
+import Npc from '/assets/js/GameEnginev1.1/essentials/Npc.js';
+
+class ${levelName} {
+  constructor(gameEnv) {
+    const path   = gameEnv.path;
+    const width  = gameEnv.innerWidth;
+    const height = gameEnv.innerHeight;
+
+    const bgData = {
+      name: 'background',
+      src: path + ${JSON.stringify(bg.src)},
+      pixels: ${JSON.stringify(bg.pixels)},
+    };
+
+    const playerData = {
+      id: 'Explorer',
+      greeting: 'Use WASD to move. Walk up to a character and press E to learn.',
+      src: path + '/images/gamify/chillguy.png',
+      SCALE_FACTOR: 5, STEP_FACTOR: 1000, ANIMATION_RATE: 50,
+      INIT_POSITION: { x: 50, y: height - (height / 5) },
+      pixels: { height: 384, width: 512 },
+      orientation: { rows: 3, columns: 4 },
+      down:      { row: 0, start: 0, columns: 3 },
+      downRight: { row: 1, start: 0, columns: 3, rotate: Math.PI / 16 },
+      downLeft:  { row: 2, start: 0, columns: 3, rotate: -Math.PI / 16 },
+      left:      { row: 2, start: 0, columns: 3 },
+      right:     { row: 1, start: 0, columns: 3 },
+      up:        { row: 0, start: 0, columns: 3 },
+      hitbox: { widthPercentage: 0.45, heightPercentage: 0.2 },
+      keypress:  { up: 87, left: 65, down: 83, right: 68 },
+    };
+
+    this.classes = [
+      { class: GameEnvBackground, data: bgData },
+      { class: Player, data: playerData },
+${npcEntries.join(',\n')}
+    ];
+  }
+}
+
+export const gameLevelClasses = [${levelName}];
+export { GameControl };
+`;
 
       return NextResponse.json({
-        game: 'GAME:' + parsed.html,
-        rationale: parsed.rationale || 'Interactive quiz variant of the original text block.',
+        game: GAME_PREFIX + gameCode,
+        rationale: parsed.rationale || 'Interactive game variant of the original text block.',
       });
     }
 
+    // ----------------------------------------------------------------
+    // Standard text variant mode
+    // ----------------------------------------------------------------
     const isLong = elementText.length > LONG_TEXT_THRESHOLD;
-    const model = isLong ? LONG_MODEL : SHORT_MODEL;
+    const model  = isLong ? LONG_MODEL : SHORT_MODEL;
 
     const prompt = isLong
       ? `You are a conversion rate optimization expert rewriting long-form web content for A/B testing.
@@ -176,8 +255,7 @@ Provide exactly 3 variant suggestions. Return ONLY valid JSON in this exact form
     });
 
     const content = completion.choices[0]?.message?.content || '{}';
-    const parsed = JSON.parse(content);
-
+    const parsed  = JSON.parse(content);
     return NextResponse.json(parsed);
 
   } catch (e: any) {
