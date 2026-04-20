@@ -3,6 +3,7 @@
   const BASE_URL = SCRIPT_URL.origin;
   const PROJECT_ID = document.currentScript.getAttribute('data-project-id');
   const MERMAID_PREFIX = 'MERMAID:';
+  const GAME_PREFIX = 'GAME:';
   const MERMAID_CDN = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
 
   if (!PROJECT_ID) {
@@ -78,6 +79,33 @@
     document.head.appendChild(s);
   }
 
+  // Inject a sandboxed iframe containing the AI-generated HTML quiz game
+  function applyGame(el, htmlContent) {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'width:100%;margin:12px 0;';
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:100%;border:none;border-radius:10px;display:block;';
+    iframe.setAttribute('sandbox', 'allow-scripts');
+    iframe.srcdoc = htmlContent;
+
+    // Auto-resize iframe to fit content once loaded
+    iframe.onload = () => {
+      try {
+        const h = iframe.contentDocument.body.scrollHeight;
+        iframe.style.height = (h + 32) + 'px';
+      } catch(e) {
+        iframe.style.height = '420px';
+      }
+    };
+    iframe.style.height = '420px'; // safe default before load
+
+    wrapper.appendChild(iframe);
+    el.parentNode.insertBefore(wrapper, el);
+    el.style.display = 'none';
+    console.log('[AB] Injected game iframe for element:', el);
+  }
+
   // Replace an element with a rendered Mermaid diagram
   function applyDiagram(el, diagramDef) {
     withMermaid(() => {
@@ -147,8 +175,14 @@
         const el = findElement(test.fingerprint, controlText);
 
         if (el) {
+          // --- Game variant ---
+          if (chosen.content.startsWith(GAME_PREFIX)) {
+            const htmlContent = chosen.content.slice(GAME_PREFIX.length);
+            console.log(`[AB] Applying game variant to element:`, el);
+            applyGame(el, htmlContent);
+
           // --- Diagram variant ---
-          if (chosen.content.startsWith(MERMAID_PREFIX)) {
+          } else if (chosen.content.startsWith(MERMAID_PREFIX)) {
             const diagramDef = chosen.content.slice(MERMAID_PREFIX.length);
             console.log(`[AB] Applying diagram variant to element:`, el);
             applyDiagram(el, diagramDef);

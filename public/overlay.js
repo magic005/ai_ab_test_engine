@@ -241,6 +241,7 @@
 
         <button class="ab-btn ab-btn-primary" id="ab-btn-magic">Generate AI Variants</button>
         <button class="ab-btn ab-btn-ghost" id="ab-btn-diagram">Generate as Diagram</button>
+        <button class="ab-btn ab-btn-ghost" id="ab-btn-game">Generate as Game</button>
         <button class="ab-btn ab-btn-ghost" id="ab-btn-reselect">Select a different element</button>
       </div>
 
@@ -309,6 +310,7 @@
   const btnDrag = document.getElementById('ab-btn-drag');
   const btnMagic = document.getElementById('ab-btn-magic');
   const btnDiagram = document.getElementById('ab-btn-diagram');
+  const btnGame = document.getElementById('ab-btn-game');
   const btnLaunch = document.getElementById('ab-btn-launch');
   const btnBack = document.getElementById('ab-btn-back');
   const btnCancelDrag = document.getElementById('ab-btn-cancel-drag');
@@ -546,10 +548,29 @@
     suggestionsDiv.innerHTML = '';
     generatedVariants.forEach((v) => {
       const card = document.createElement('div');
-      card.className = 'ab-variant-card' + (v === generatedVariants[0] && v.isDiagram ? ' selected' : '');
+      const isAutoSelected = v === generatedVariants[0] && (v.isDiagram || v.isGame);
+      card.className = 'ab-variant-card' + (isAutoSelected ? ' selected' : '');
 
-      if (v.isDiagram) {
-        // Strip the MERMAID: prefix for display
+      if (v.isGame) {
+        const htmlContent = v.text.startsWith('GAME:') ? v.text.slice(5) : v.text;
+        const escaped = htmlContent.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        card.innerHTML = `
+          <div class="ab-variant-text" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="background:#14532d;color:#86efac;font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:4px;text-transform:uppercase;">Game</span>
+            Interactive Quiz Variant
+          </div>
+          <div class="ab-variant-rationale" style="margin-bottom:8px;">${v.rationale}</div>
+          <iframe srcdoc="${escaped}" sandbox="allow-scripts"
+            style="width:100%;height:320px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;background:#0f172a;"
+          ></iframe>
+        `;
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.ab-variant-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          chosenVariant = v.text;
+        });
+
+      } else if (v.isDiagram) {
         const MERMAID_PREFIX = 'MERMAID:';
         const displayCode = v.text.startsWith(MERMAID_PREFIX) ? v.text.slice(MERMAID_PREFIX.length) : v.text;
         card.innerHTML = `
@@ -560,12 +581,12 @@
           <pre style="background:#0d1117;color:#79c0ff;font-size:11px;border-radius:6px;padding:10px;overflow-x:auto;white-space:pre;margin:0;line-height:1.5;">${displayCode.replace(/</g,'&lt;')}</pre>
           <div class="ab-variant-rationale" style="margin-top:8px;">${v.rationale}</div>
         `;
-        // Auto-select the diagram card
         card.addEventListener('click', () => {
           document.querySelectorAll('.ab-variant-card').forEach(c => c.classList.remove('selected'));
           card.classList.add('selected');
           chosenVariant = v.text;
         });
+
       } else {
         card.innerHTML = `<div class="ab-variant-text">${v.text}</div><div class="ab-variant-rationale">${v.rationale}</div>`;
         card.addEventListener('click', () => {
@@ -603,6 +624,32 @@
     } finally {
       btnDiagram.disabled = false;
       btnDiagram.textContent = 'Generate as Diagram';
+    }
+  });
+
+  // --- Game generation ---
+  btnGame.addEventListener('click', async () => {
+    const text = originalFullText;
+    if (!text) return;
+    btnGame.disabled = true;
+    btnGame.innerHTML = '<span class="ab-spinner"></span>Generating game...';
+    try {
+      const res = await fetch(`${BASE_URL}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: document.title, elementText: text, mode: 'game' })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.game) throw new Error(data.error || 'No game returned');
+      generatedVariants = [{ text: data.game, rationale: data.rationale, isGame: true }];
+      chosenVariant = data.game;
+      renderVariants();
+      showStep(3);
+    } catch (err) {
+      alert('Failed to generate game: ' + err.message);
+    } finally {
+      btnGame.disabled = false;
+      btnGame.textContent = 'Generate as Game';
     }
   });
 

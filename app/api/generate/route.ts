@@ -70,7 +70,63 @@ Return ONLY valid JSON in this exact format:
       });
     }
 
-    // --- Standard text variant mode ---
+    // --- Game mode: generate a self-contained HTML quiz game from text ---
+    if (mode === 'game') {
+      const prompt = `You are an expert educational game designer. Convert the following text into a complete, self-contained HTML quiz game.
+
+Page context: "${context}"
+
+Source text:
+"""
+${elementText}
+"""
+
+Rules:
+- Output a SINGLE complete HTML document (<!DOCTYPE html>...to...html>) with inline <style> and <script>
+- Create 3-5 multiple choice questions directly based on facts, concepts, or steps in the text
+- Dark theme: background #0f172a, cards #1e293b, accent #3b82f6, text #f1f5f9
+- Font: system-ui or -apple-system
+- Show one question at a time with 4 answer choices (A/B/C/D)
+- Highlight correct (green #22c55e) and wrong (red #ef4444) on selection
+- Track score and show final screen with score/total and a message
+- The game must be fully self-contained — zero external imports, zero network requests
+- Make it visually clean and engaging; use smooth CSS transitions
+- Add a small title at the top summarizing the topic
+- The final score screen should include a "Well done!" or "Keep studying!" message depending on score
+- Do NOT reference any external files, CDN links, images, or APIs
+
+Return ONLY valid JSON in this exact format (the html field must be the complete HTML string, properly escaped):
+{
+  "html": "<complete html document as a single string>",
+  "rationale": "One sentence on why an interactive quiz may outperform the static text paragraph"
+}`;
+
+      const completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: LONG_MODEL,
+        response_format: { type: 'json_object' },
+        temperature: 0.4,
+        max_tokens: 4096,
+      });
+
+      const raw = completion.choices[0]?.message?.content || '{}';
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return NextResponse.json({ error: 'Model returned invalid JSON' }, { status: 500 });
+      }
+
+      if (!parsed.html) {
+        return NextResponse.json({ error: 'Model did not return a game' }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        game: 'GAME:' + parsed.html,
+        rationale: parsed.rationale || 'Interactive quiz variant of the original text block.',
+      });
+    }
+
     const isLong = elementText.length > LONG_TEXT_THRESHOLD;
     const model = isLong ? LONG_MODEL : SHORT_MODEL;
 
