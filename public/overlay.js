@@ -242,6 +242,7 @@
         <button class="ab-btn ab-btn-primary" id="ab-btn-magic">Generate AI Variants</button>
         <button class="ab-btn ab-btn-ghost" id="ab-btn-diagram">Generate as Diagram</button>
         <button class="ab-btn ab-btn-ghost" id="ab-btn-game">Generate as Game</button>
+        <button class="ab-btn ab-btn-ghost" id="ab-btn-drag">Drag to Reposition</button>
         <button class="ab-btn ab-btn-ghost" id="ab-btn-reselect">Select a different element</button>
       </div>
 
