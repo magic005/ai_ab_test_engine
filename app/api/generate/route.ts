@@ -12,9 +12,12 @@ export const GAME_PREFIX    = 'GAME:';
 
 // --- Sprite / background asset catalogs (OCS site-relative paths) ---
 const SPRITES: Record<string, { src: string; pixels: object; orientation: object; scale: number; down: object }> = {
-  r2:         { src: '/images/gamify/r2_idle.png',    pixels: { width: 505, height: 223 }, orientation: { rows: 1, columns: 3 }, scale: 8, down: { row: 0, start: 0, columns: 3 } },
-  tony:       { src: '/images/gamify/tony.png',       pixels: { width: 1000, height: 300 }, orientation: { rows: 1, columns: 4 }, scale: 6, down: { row: 0, start: 0, columns: 4 } },
-  schwabbman: { src: '/images/gamify/schwabbman.png', pixels: { width: 500, height: 500 },  orientation: { rows: 1, columns: 4 }, scale: 5, down: { row: 0, start: 0, columns: 4 } },
+  // r2_idle: animated 3-frame sprite — confirmed working in GameLevelBasic
+  r2:          { src: '/images/gamify/r2_idle.png',       pixels: { width: 505, height: 223 }, orientation: { rows: 1, columns: 3 }, scale: 8,   down: { row: 0, start: 0, columns: 3 } },
+  // frankSinatra: static single-frame portrait — confirmed working in GameLevelAirport
+  frankSinatra:{ src: '/images/gamify/frankSinatra.png',  pixels: { width: 280, height: 281 }, orientation: { rows: 1, columns: 1 }, scale: 5,   down: { row: 0, start: 0, columns: 1 } },
+  // schwabbman: static single-frame tall sprite — confirmed working in GameLevelAirport
+  schwabbman:  { src: '/images/gamify/schwabbman.png',    pixels: { width: 398, height: 747 }, orientation: { rows: 1, columns: 1 }, scale: 6,   down: { row: 0, start: 0, columns: 1 } },
 };
 
 const BACKGROUNDS: Record<string, { src: string; pixels: object }> = {
@@ -89,7 +92,7 @@ ${elementText}
 
 Extract 2-4 key concepts. Each concept becomes one NPC the player walks up to (WASD movement) and talks to (E key).
 
-Available NPC sprites: "r2", "tony", "schwabbman" — pick a different one per NPC.
+Available NPC sprites: "r2", "frankSinatra", "schwabbman" — pick a different one per NPC.
 Available backgrounds: "desert", "clouds", "alien" — pick the best fit.
 
 Return ONLY valid JSON:
@@ -136,16 +139,16 @@ Every NPC must have exactly 3 dialogues.`;
         const sp = SPRITES[npc.sprite] || SPRITES.r2;
         return `  { class: Npc, data: {
       id: ${JSON.stringify(npc.id)},
-      greeting: ${JSON.stringify((npc.dialogues?.[0] ?? 'Hello!') + ' (Press E to interact)')},
+      greeting: ${JSON.stringify((npc.dialogues?.[0] ?? 'Hello!') + ' — press E to learn more!')},
       src: path + ${JSON.stringify(sp.src)},
       SCALE_FACTOR: ${sp.scale}, ANIMATION_RATE: 100,
       pixels: ${JSON.stringify(sp.pixels)},
-      INIT_POSITION: { x: width * ${npc.positionX}, y: height * 0.5 },
+      INIT_POSITION: { x: width * ${npc.positionX}, y: height * 0.6 },
       orientation: ${JSON.stringify(sp.orientation)},
       down: ${JSON.stringify(sp.down)},
       hitbox: { widthPercentage: 0.1, heightPercentage: 0.2 },
       dialogues: ${JSON.stringify(npc.dialogues)},
-      reaction: function() { if (this.dialogueSystem) this.showReactionDialogue(); },
+      interact: function() { this.showRandomDialogue(); },
     } }`;
       });
 
