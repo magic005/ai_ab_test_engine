@@ -216,11 +216,12 @@ export function TestActions({
           <select
             value={selectedWinner}
             onChange={(e) => setSelectedWinner(e.target.value)}
-            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+            className="flex-1 bg-[#1a1a1f] border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none"
+            style={{ colorScheme: 'dark' }}
           >
-            <option value="">Select winner...</option>
+            <option value="" style={{ background: '#1a1a1f', color: '#9ca3af' }}>Select winner...</option>
             {variants.map((v) => (
-              <option key={v.id} value={v.id}>{v.name}</option>
+              <option key={v.id} value={v.id} style={{ background: '#1a1a1f', color: '#fff' }}>{v.name}</option>
             ))}
           </select>
           <button

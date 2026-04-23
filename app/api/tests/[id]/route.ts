@@ -17,7 +17,7 @@ export async function GET(
     const views = v.events.filter((e) => e.type === 'view').length;
     const conversions = v.events.filter((e) => e.type === 'conversion').length;
     const rate = views > 0 ? Math.round((conversions / views) * 10000) / 100 : 0;
-    return { id: v.id, name: v.name, content: v.content, traffic: v.traffic, metadata: (v as any).metadata, views, conversions, conversionRate: rate };
+    return { id: v.id, name: v.name, content: v.content, traffic: v.traffic, metadata: v.metadata, views, conversions, conversionRate: rate };
   });
 
   return NextResponse.json({ test: { ...test, variants } });
@@ -28,24 +28,30 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await request.json();
-  const updates: Record<string, any> = {};
 
-  if (body.name !== undefined) updates.name = body.name;
-  if (body.status !== undefined) updates.status = body.status;
-  if (body.winnerId !== undefined) updates.winnerId = body.winnerId;
-  if (body.goal !== undefined) updates.goal = body.goal;
+  try {
+    const body = await request.json();
+    const updates: Record<string, any> = {};
 
-  // If declaring a winner, also set status to completed
-  if (body.winnerId && !body.status) updates.status = 'completed';
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.status !== undefined) updates.status = body.status;
+    if (body.winnerId !== undefined) updates.winnerId = body.winnerId;
+    if (body.goal !== undefined) updates.goal = body.goal;
 
-  const test = await prisma.test.update({
-    where: { id },
-    data: updates,
-    include: { variants: true },
-  });
+    // If declaring a winner, also set status to completed
+    if (body.winnerId && !body.status) updates.status = 'completed';
 
-  return NextResponse.json({ test });
+    const test = await prisma.test.update({
+      where: { id },
+      data: updates,
+      include: { variants: true },
+    });
+
+    return NextResponse.json({ test });
+  } catch (e: any) {
+    console.error('PUT /api/tests/[id] error:', e);
+    return NextResponse.json({ error: e.message || 'Failed to update test' }, { status: 500 });
+  }
 }
 
 export async function DELETE(
@@ -53,6 +59,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  await prisma.test.delete({ where: { id } });
-  return NextResponse.json({ success: true });
+
+  try {
+    await prisma.test.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || 'Failed to delete test' }, { status: 500 });
+  }
 }

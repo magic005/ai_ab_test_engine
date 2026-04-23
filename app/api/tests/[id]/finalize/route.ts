@@ -28,9 +28,6 @@ export async function POST(
     return NextResponse.json({ error: 'Test not found' }, { status: 404 });
   }
 
-  // Cast to any to handle schema fields not yet in generated client
-  const t = test as any;
-
   // Get settings
   const settings = getSettings();
   if (!settings.githubToken || !settings.githubRepo) {
@@ -44,8 +41,8 @@ export async function POST(
 
   // Parse request body for winner selection
   const body = await request.json().catch(() => ({}));
-  const winnerId = body.winnerId || t.winnerId;
-  const winner = test.variants.find((v) => v.id === winnerId) as any;
+  const winnerId = body.winnerId || test.winnerId;
+  const winner = test.variants.find((v) => v.id === winnerId);
 
   if (!winner) {
     return NextResponse.json({ error: 'No winner selected. Declare a winner first.' }, { status: 400 });
@@ -67,7 +64,7 @@ export async function POST(
       : 'N/A';
 
   // Determine content type label
-  let contentTypeLabel = t.contentType || 'text';
+  let contentTypeLabel = test.contentType || 'text';
   try {
     const parsed = JSON.parse(winner.content);
     if (parsed.type === 'position') contentTypeLabel = 'reposition';
@@ -195,7 +192,7 @@ This test result has been implemented in PR linked below. The winning variant sh
     );
 
     // Mark test as completed with winner
-    await (prisma.test as any).update({
+    await prisma.test.update({
       where: { id },
       data: { status: 'completed', winnerId },
     });

@@ -84,9 +84,8 @@ export default async function Dashboard() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {project.tests.map((rawTest) => {
-                      const test = rawTest as any;
-                      const totalEvents = test.variants.reduce((acc: number, v: any) => acc + v.events.length, 0);
+                    {project.tests.map((test) => {
+                      const totalEvents = test.variants.reduce((acc, v) => acc + v.events.length, 0);
 
                       // Determine content type
                       let typeLabel = test.contentType || 'text';
@@ -134,9 +133,9 @@ export default async function Dashboard() {
                           </div>
 
                           <div className="space-y-4">
-                            {test.variants.map((variant: any, idx: number) => {
-                              const views = variant.events.filter((e: any) => e.type === 'view').length;
-                              const convs = variant.events.filter((e: any) => e.type === 'conversion').length;
+                            {test.variants.map((variant, idx) => {
+                              const views = variant.events.filter((e) => e.type === 'view').length;
+                              const convs = variant.events.filter((e) => e.type === 'conversion').length;
                               const convRate = views > 0 ? ((convs / views) * 100).toFixed(1) : '0.0';
                               const barWidth = Math.max(5, (views / Math.max(1, totalEvents)) * 100);
                               const isWinner = test.winnerId === variant.id;
@@ -184,7 +183,7 @@ export default async function Dashboard() {
                             testId={test.id}
                             status={test.status}
                             winnerId={test.winnerId}
-                            variants={test.variants.map((v: any) => ({ id: v.id, name: v.name }))}
+                            variants={test.variants.map((v) => ({ id: v.id, name: v.name }))}
                             hasGithub={!!settings.githubToken && !!settings.githubRepo}
                           />
                         </div>
