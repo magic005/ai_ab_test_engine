@@ -228,6 +228,7 @@
       <div id="ab-step-1">
         <p class="ab-desc">Click any element on the page to start building a variant.</p>
         <button class="ab-btn ab-btn-primary" id="ab-btn-select">Select Element</button>
+        <button class="ab-btn ab-btn-ghost" id="ab-btn-view-tests" style="margin-top:4px;">View Active Tests</button>
       </div>
 
       <div id="ab-step-2" style="display:none;">
@@ -280,6 +281,14 @@
         </div>
 
         <button class="ab-btn ab-btn-ghost" id="ab-btn-cancel-drag" style="margin-top:8px;">Cancel</button>
+      </div>
+
+      <div id="ab-step-5" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <label class="ab-label" style="margin:0;">Active Tests</label>
+          <button class="ab-btn ab-btn-ghost" id="ab-btn-back-to-start" style="padding:4px 10px;font-size:11px;">← New Test</button>
+        </div>
+        <div id="ab-tests-list"></div>
       </div>
     </div>
   `;
@@ -341,8 +350,13 @@
     if (selectedElement) selectedElement.classList.remove('ab-selected-highlight');
   }
 
+  const step5 = document.getElementById('ab-step-5');
+  const btnViewTests = document.getElementById('ab-btn-view-tests');
+  const btnBackToStart = document.getElementById('ab-btn-back-to-start');
+  const testsListDiv = document.getElementById('ab-tests-list');
+
   function showStep(n) {
-    [step1, step2, step3, step4].forEach((s, i) => s.style.display = i === n - 1 ? 'block' : 'none');
+    [step1, step2, step3, step4, step5].forEach((s, i) => s.style.display = i === n - 1 ? 'block' : 'none');
   }
 
   // --- Drag-to-reposition handlers (named so they can be removed) ---
@@ -689,6 +703,125 @@
       btnLaunch.textContent = 'Launch 50/50 Test';
     }
   });
+
+  // --- View Tests & Finalize ---
+  btnViewTests.addEventListener('click', async () => {
+    showStep(5);
+    testsListDiv.innerHTML = '<p class="ab-desc" style="text-align:center;">Loading tests...</p>';
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/tests?projectId=${PROJECT_ID}&all=true`);
+      const data = await res.json();
+      const tests = data.tests || [];
+
+      if (tests.length === 0) {
+        testsListDiv.innerHTML = '<p class="ab-desc" style="text-align:center;">No active tests found.</p>';
+        return;
+      }
+
+      testsListDiv.innerHTML = '';
+      tests.forEach(test => {
+        const totalViews = test.variants.reduce((s, v) => s + (v.events?.filter(e => e.type === 'view').length || 0), 0);
+
+        // Detect type
+        let typeLabel = test.contentType || 'text';
+        const vc = test.variants[1]?.content || '';
+        if (vc.startsWith('MERMAID:')) typeLabel = 'diagram';
+        else if (vc.startsWith('GAME:')) typeLabel = 'game';
+        else { try { if (JSON.parse(vc).type === 'position') typeLabel = 'reposition'; } catch {} }
+
+        const typeColors = { text: '#9ca3af', button: '#a78bfa', diagram: '#60a5fa', game: '#34d399', reposition: '#fb923c', hero: '#fbbf24', html: '#22d3ee', image: '#f472b6' };
+
+        const card = document.createElement('div');
+        card.style.cssText = 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px;margin-bottom:10px;';
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+            <div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:${test.status === 'completed' ? '#3b82f6' : '#22c55e'};"></span>
+                <span style="font-size:10px;font-weight:700;color:${test.status === 'completed' ? '#60a5fa' : '#22c55e'};text-transform:uppercase;">${test.status}</span>
+                <span style="font-size:9px;font-weight:700;color:${typeColors[typeLabel] || '#9ca3af'};background:rgba(255,255,255,0.05);padding:1px 6px;border-radius:4px;text-transform:uppercase;">${typeLabel}</span>
+              </div>
+              <div style="font-size:13px;font-weight:600;color:#e5e7eb;">${test.name}</div>
+            </div>
+            <div style="font-size:11px;color:#6b7280;">${totalViews} views</div>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            ${test.variants.map((v, i) => {
+              const views = v.events?.filter(e => e.type === 'view').length || 0;
+              const convs = v.events?.filter(e => e.type === 'conversion').length || 0;
+              const rate = views > 0 ? ((convs / views) * 100).toFixed(1) : '0.0';
+              return `<div style="flex:1;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;border:1px solid rgba(255,255,255,0.04);">
+                <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">${v.name}</div>
+                <div style="font-size:14px;font-weight:600;color:#fff;">${rate}%</div>
+                <div style="font-size:9px;color:#6b7280;">${views} views · ${convs} conv</div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div id="ab-test-actions-${test.id}" style="display:flex;gap:6px;">
+            ${test.status !== 'completed' ? `
+              <select id="ab-winner-${test.id}" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:6px 8px;color:#e5e7eb;font-size:11px;outline:none;">
+                <option value="">Select winner...</option>
+                ${test.variants.map(v => `<option value="${v.id}">${v.name}</option>`).join('')}
+              </select>
+            ` : ''}
+            <button class="ab-btn-finalize" data-test-id="${test.id}" ${test.winnerId ? `data-winner-id="${test.winnerId}"` : ''}
+              style="padding:6px 14px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:white;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">
+              Finalize → PR
+            </button>
+          </div>
+          <div id="ab-finalize-result-${test.id}" style="display:none;margin-top:8px;"></div>
+        `;
+        testsListDiv.appendChild(card);
+      });
+
+      // Attach finalize handlers
+      document.querySelectorAll('.ab-btn-finalize').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          const testId = this.dataset.testId;
+          let winnerId = this.dataset.winnerId || '';
+          const selectEl = document.getElementById('ab-winner-' + testId);
+          if (selectEl) winnerId = selectEl.value;
+          if (!winnerId) { alert('Select a winner first'); return; }
+
+          this.disabled = true;
+          this.textContent = 'Creating...';
+          const resultDiv = document.getElementById('ab-finalize-result-' + testId);
+
+          try {
+            const res = await fetch(`${BASE_URL}/api/tests/${testId}/finalize`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ winnerId }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed');
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = `
+              <div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:10px;font-size:11px;">
+                <div style="color:#4ade80;font-weight:600;margin-bottom:6px;">✓ Finalized!</div>
+                ${data.issue?.url ? `<a href="${data.issue.url}" target="_blank" style="color:#60a5fa;text-decoration:none;display:block;margin-bottom:2px;">→ GitHub Issue #${data.issue.number}</a>` : ''}
+                ${data.pr?.url ? `<a href="${data.pr.url}" target="_blank" style="color:#c084fc;text-decoration:none;display:block;">→ Pull Request #${data.pr.number}</a>` : ''}
+              </div>
+            `;
+            this.textContent = 'Done ✓';
+            this.style.background = '#22c55e';
+          } catch (err) {
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = `<div style="color:#f87171;font-size:11px;">${err.message}</div>`;
+            this.disabled = false;
+            this.textContent = 'Finalize → PR';
+          }
+        });
+      });
+
+    } catch (err) {
+      testsListDiv.innerHTML = `<p class="ab-desc" style="color:#f87171;">Failed to load tests: ${err.message}</p>`;
+    }
+  });
+
+  btnBackToStart.addEventListener('click', () => showStep(1));
 
   // --- Position test launch ---
   btnPosLaunch.addEventListener('click', async () => {

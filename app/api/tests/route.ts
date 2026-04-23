@@ -9,15 +9,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Missing projectId' }, { status: 400 });
   }
 
-  // Fetch all live tests for the project
+  const includeAll = searchParams.get('all') === 'true';
+
   const tests = await prisma.test.findMany({
-    where: { 
-      projectId,
-      status: 'live'
-    },
+    where: includeAll ? { projectId } : { projectId, status: 'live' },
     include: {
-      variants: true,
-    }
+      variants: { include: { events: true } },
+    },
+    orderBy: { createdAt: 'desc' },
   });
 
   return NextResponse.json({ tests });

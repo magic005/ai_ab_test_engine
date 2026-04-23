@@ -1,11 +1,15 @@
 import prisma from '@/prisma/db';
 import { revalidatePath } from 'next/cache';
-import { Activity, MousePointerClick, BarChart3, Plus, ArrowRight, LayoutDashboard } from 'lucide-react';
+import { Activity, MousePointerClick, BarChart3, Plus, ArrowRight, LayoutDashboard, Settings, GitPullRequest, CheckCircle, Trophy, ExternalLink } from 'lucide-react';
+import { getSettings } from '@/lib/settings';
+import { GitHubSettings, TestActions, CopySnippet } from './components';
 
 export default async function Dashboard() {
   const projects = await prisma.project.findMany({
     include: { tests: { include: { variants: { include: { events: true } } } } }
   });
+
+  const settings = getSettings();
 
   async function createProject(formData: FormData) {
     'use server';
@@ -30,13 +34,20 @@ export default async function Dashboard() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-12">
+      <main className="max-w-7xl mx-auto px-6 py-12 space-y-12">
+        {/* GitHub Settings Panel */}
+        <GitHubSettings
+          hasToken={!!settings.githubToken}
+          repo={settings.githubRepo || ''}
+          branch={settings.githubBranch || 'main'}
+        />
+
         {projects.length === 0 ? (
           <div className="max-w-md mx-auto mt-20 p-8 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <h2 className="text-2xl font-semibold mb-2">Welcome to A/B Engine</h2>
             <p className="text-gray-400 mb-8 max-w-sm">Create your first project to get your integration snippet and start running AI-powered A/B tests.</p>
-            
+
             <form action={createProject} className="space-y-4 relative z-10">
               <div>
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Project Name</label>
@@ -61,13 +72,8 @@ export default async function Dashboard() {
                     <h1 className="text-3xl font-semibold tracking-tight mb-2">{project.name}</h1>
                     <a href={project.url} target="_blank" className="text-blue-400 hover:text-blue-300 text-sm transition-colors">{project.url}</a>
                   </div>
-                  
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-4 max-w-md">
-                    <p className="text-xs text-gray-400 mb-2 font-mono uppercase">Installation Snippet</p>
-                    <code className="text-xs text-green-400 font-mono break-all line-clamp-2 select-all">
-                      {`<script src="http://localhost:3000/sdk.js" data-project-id="${project.id}"></script>`}
-                    </code>
-                  </div>
+
+                  <CopySnippet projectId={project.id} />
                 </div>
 
                 {project.tests.length === 0 ? (
@@ -78,17 +84,45 @@ export default async function Dashboard() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {project.tests.map(test => {
-                      const totalEvents = test.variants.reduce((acc, v) => acc + v.events.length, 0);
-                      const totalConversions = test.variants.reduce((acc, v) => acc + v.events.filter(e => e.type === 'conversion').length, 0);
-                      
+                    {project.tests.map((rawTest) => {
+                      const test = rawTest as any;
+                      const totalEvents = test.variants.reduce((acc: number, v: any) => acc + v.events.length, 0);
+
+                      // Determine content type
+                      let typeLabel = test.contentType || 'text';
+                      const variantContent = test.variants[1]?.content || '';
+                      if (variantContent.startsWith('MERMAID:')) typeLabel = 'diagram';
+                      else if (variantContent.startsWith('GAME:')) typeLabel = 'game';
+                      else {
+                        try {
+                          const p = JSON.parse(variantContent);
+                          if (p.type === 'position') typeLabel = 'reposition';
+                        } catch {}
+                      }
+
+                      const typeBadgeColors: Record<string, string> = {
+                        text: 'bg-gray-500/20 text-gray-300',
+                        button: 'bg-purple-500/20 text-purple-300',
+                        hero: 'bg-amber-500/20 text-amber-300',
+                        html: 'bg-cyan-500/20 text-cyan-300',
+                        image: 'bg-pink-500/20 text-pink-300',
+                        diagram: 'bg-blue-500/20 text-blue-300',
+                        game: 'bg-green-500/20 text-green-300',
+                        reposition: 'bg-orange-500/20 text-orange-300',
+                      };
+
                       return (
                         <div key={test.id} className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-6 hover:bg-white/[0.04] transition-colors">
                           <div className="flex justify-between items-start mb-6">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse" />
-                                <span className="text-xs font-semibold text-emerald-500 uppercase tracking-wider">Live</span>
+                                <span className={`w-2 h-2 rounded-full ${test.status === 'completed' ? 'bg-blue-500' : 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse'}`} />
+                                <span className={`text-xs font-semibold uppercase tracking-wider ${test.status === 'completed' ? 'text-blue-400' : 'text-emerald-500'}`}>
+                                  {test.status === 'completed' ? 'Completed' : 'Live'}
+                                </span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${typeBadgeColors[typeLabel] || typeBadgeColors.text}`}>
+                                  {typeLabel}
+                                </span>
                               </div>
                               <h3 className="text-xl font-medium">{test.name}</h3>
                               <p className="text-sm text-gray-500 mt-1 font-mono truncate max-w-xs">{test.fingerprint}</p>
@@ -98,29 +132,34 @@ export default async function Dashboard() {
                               <p className="text-2xl font-light">{totalEvents} <span className="text-sm text-gray-500">hits</span></p>
                             </div>
                           </div>
-                          
+
                           <div className="space-y-4">
-                            {test.variants.map((variant, idx) => {
-                              const views = variant.events.filter(e => e.type === 'view').length;
-                              const convs = variant.events.filter(e => e.type === 'conversion').length;
+                            {test.variants.map((variant: any, idx: number) => {
+                              const views = variant.events.filter((e: any) => e.type === 'view').length;
+                              const convs = variant.events.filter((e: any) => e.type === 'conversion').length;
                               const convRate = views > 0 ? ((convs / views) * 100).toFixed(1) : '0.0';
                               const barWidth = Math.max(5, (views / Math.max(1, totalEvents)) * 100);
+                              const isWinner = test.winnerId === variant.id;
 
                               return (
-                                <div key={variant.id} className="bg-black/30 rounded-xl p-4 border border-white/5">
+                                <div key={variant.id} className={`bg-black/30 rounded-xl p-4 border ${isWinner ? 'border-emerald-500/30' : 'border-white/5'}`}>
                                   <div className="flex justify-between items-end mb-3">
                                     <div>
                                       <div className="flex items-center gap-2 mb-1">
-                                        <div className={`w-3 h-3 rounded-sm ${idx === 0 ? 'bg-gray-500' : 'bg-blue-500'}`} />
+                                        <div className={`w-3 h-3 rounded-sm ${idx === 0 ? 'bg-gray-500' : isWinner ? 'bg-emerald-500' : 'bg-blue-500'}`} />
                                         <span className="font-medium text-sm text-gray-200">{variant.name}</span>
+                                        {isWinner && <Trophy className="w-3.5 h-3.5 text-emerald-400" />}
                                       </div>
                                       <p className="text-xs text-gray-500 truncate max-w-[200px]" title={variant.content}>
                                         {(() => {
+                                          if (variant.content.startsWith('MERMAID:')) return 'Mermaid diagram';
+                                          if (variant.content.startsWith('GAME:')) return 'Game level';
                                           try {
                                             const p = JSON.parse(variant.content);
                                             if (p.type === 'position') return `Moved → ${p.parentSelector}`;
+                                            if (p.text) return p.text;
                                           } catch {}
-                                          return variant.content;
+                                          return variant.content.slice(0, 80);
                                         })()}
                                       </p>
                                     </div>
@@ -133,12 +172,21 @@ export default async function Dashboard() {
                                     </div>
                                   </div>
                                   <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                    <div className={`h-full rounded-full ${idx === 0 ? 'bg-gray-500' : 'bg-blue-500'}`} style={{ width: `${barWidth}%` }} />
+                                    <div className={`h-full rounded-full ${idx === 0 ? 'bg-gray-500' : isWinner ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${barWidth}%` }} />
                                   </div>
                                 </div>
                               );
                             })}
                           </div>
+
+                          {/* Test Actions: declare winner + finalize */}
+                          <TestActions
+                            testId={test.id}
+                            status={test.status}
+                            winnerId={test.winnerId}
+                            variants={test.variants.map((v: any) => ({ id: v.id, name: v.name }))}
+                            hasGithub={!!settings.githubToken && !!settings.githubRepo}
+                          />
                         </div>
                       )
                     })}
