@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import prisma from '@/prisma/db';
 import { revalidatePath } from 'next/cache';
 import { Activity, MousePointerClick, BarChart3, Plus, ArrowRight, LayoutDashboard, Settings, GitPullRequest, CheckCircle, Trophy, ExternalLink } from 'lucide-react';

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Settings, GitPullRequest, CheckCircle, ExternalLink, Eye, EyeOff, Trophy, Loader2 } from 'lucide-react';
 
 // ---- GitHub Settings Panel ----
@@ -140,8 +141,10 @@ export function TestActions({
   variants: { id: string; name: string }[];
   hasGithub: boolean;
 }) {
+  const router = useRouter();
   const [selectedWinner, setSelectedWinner] = useState(winnerId || '');
   const [declaring, setDeclaring] = useState(false);
+  const [declared, setDeclared] = useState(!!winnerId);
   const [finalizing, setFinalizing] = useState(false);
   const [result, setResult] = useState<{ issue?: string; pr?: string } | null>(null);
   const [error, setError] = useState('');
@@ -156,8 +159,11 @@ export function TestActions({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ winnerId: selectedWinner }),
       });
-      if (!res.ok) throw new Error('Failed to declare winner');
-      window.location.reload();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to declare winner');
+      setDeclared(true);
+      setDeclaring(false);
+      router.refresh();
     } catch (e: any) {
       setError(e.message);
       setDeclaring(false);
@@ -210,8 +216,18 @@ export function TestActions({
 
   return (
     <div className="mt-6 pt-4 border-t border-white/5 space-y-3">
+      {/* Winner declared banner */}
+      {declared && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+          <Trophy className="w-4 h-4 text-emerald-400" />
+          <span className="text-sm text-emerald-400 font-medium">
+            Winner declared: {variants.find(v => v.id === selectedWinner)?.name || 'Selected'}
+          </span>
+        </div>
+      )}
+
       {/* Winner selection */}
-      {!winnerId && status !== 'completed' && (
+      {!declared && (
         <div className="flex items-center gap-2">
           <select
             value={selectedWinner}
