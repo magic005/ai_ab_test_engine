@@ -21,7 +21,7 @@ async function ghFetch(token: string, path: string, opts: RequestInit = {}) {
   return body as any;
 }
 
-/** Create a GitHub Issue with markdown body */
+/** Create a GitHub Issue with a markdown body */
 export async function createIssue(
   token: string,
   repo: string,
