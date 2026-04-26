@@ -6,7 +6,7 @@ This project is built using:
 - Next.js (App Router)
 - React, Tailwind CSS
 - Prisma with SQLite
-- Groq AI (Llama 3) for variant generation
+- Groq AI (Llama 3) for variant generations
 
 ## Overview
 
