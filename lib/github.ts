@@ -1,6 +1,6 @@
 /**
- * GitHub API helper — uses fetch directly, no octokit dependency needed.
- * All methods require a personal access token with repo scope.
+ * GitHub API helper — uses fetch directly, no octokit dependency needed
+ * All methods require a personal access token with repo scope
  */
 
 const API = 'https://api.github.com';
