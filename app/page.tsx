@@ -67,6 +67,27 @@ export default async function Dashboard() {
           </div>
         ) : (
           <div className="space-y-12">
+            {/* Aggregate stats bar */}
+            {(() => {
+              const liveTests = projects.flatMap(p => p.tests).filter(t => t.status === 'live').length;
+              const totalTests = projects.flatMap(p => p.tests).length;
+              const totalEvents = projects.flatMap(p => p.tests).flatMap(t => t.variants).flatMap(v => v.events).length;
+              return (
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { label: 'Live Tests', value: liveTests, sub: `of ${totalTests} total`, color: 'text-emerald-400' },
+                    { label: 'Events Recorded', value: totalEvents.toLocaleString(), sub: 'views + clicks', color: 'text-blue-400' },
+                    { label: 'Projects', value: projects.length, sub: 'tracked', color: 'text-purple-400' },
+                  ].map(stat => (
+                    <div key={stat.label} className="rounded-xl border border-white/10 bg-white/[0.02] px-6 py-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">{stat.label}</p>
+                      <p className={`text-3xl font-light ${stat.color}`}>{stat.value}</p>
+                      <p className="text-xs text-gray-600 mt-1">{stat.sub}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             {projects.map(project => (
               <div key={project.id} className="space-y-6">
                 <div className="flex items-end justify-between border-b border-white/10 pb-6">
