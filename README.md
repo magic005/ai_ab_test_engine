@@ -53,6 +53,10 @@ The admin dashboard will be available at `http://localhost:3000`.
 1. Create a project in the Admin Dashboard to receive your unique project snippet.
 2. Insert the generated `<script>` tag into the `<head>` of your website:
    ```html
-   <script src="http://localhost:3000/sdk.js" data-project-id="clx..."></script>
+   <script src="https://ai-ab-test-engine.vercel.app/sdk.js" data-project-id="clx..."></script>
    ```
-3. To visually create a test, open your website and append `?ab_admin=true` to the URL. This will activate the Admin Overlay, allowing you to click any visual element and harness AI to rewrite it.
+3. For Jekyll or GitHub Pages sites, include `data-site-baseurl` when assets are served from a subpath:
+   ```html
+   <script src="https://ai-ab-test-engine.vercel.app/sdk.js" data-project-id="clx..." data-site-baseurl="/pages"></script>
+   ```
+4. To visually create a test, open your website and append `?ab_admin=true` to the URL. This will activate the Admin Overlay, allowing you to click any visual element and harness AI to rewrite it.
