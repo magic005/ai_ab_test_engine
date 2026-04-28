@@ -114,6 +114,9 @@ export default async function Dashboard() {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {project.tests.map((test) => {
                       const totalEvents = test.variants.reduce((acc, v) => acc + v.events.length, 0);
+                      const totalViews = test.variants.reduce((acc, v) => acc + v.events.filter(e => e.type === 'view').length, 0);
+                      const totalConversions = test.variants.reduce((acc, v) => acc + v.events.filter(e => e.type === 'conversion').length, 0);
+                      const testConversionRate = totalViews > 0 ? ((totalConversions / totalViews) * 100).toFixed(1) : '0.0';
 
                       // Determine content type
                       let typeLabel = test.contentType || 'text';
@@ -157,6 +160,9 @@ export default async function Dashboard() {
                             <div className="text-right">
                               <p className="text-sm text-gray-400 mb-1">Goal: <span className="text-white capitalize">{test.goal}</span></p>
                               <p className="text-2xl font-light">{totalEvents} <span className="text-sm text-gray-500">hits</span></p>
+                              {test.goal === 'click' && (
+                                <p className="text-xs text-gray-500 mt-1">{testConversionRate}% overall CVR</p>
+                              )}
                             </div>
                           </div>
 
