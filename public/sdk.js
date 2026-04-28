@@ -155,7 +155,7 @@
       console.log('[AB] Game runner injected for element:', el);
 
     }).catch(err => {
-      console.error('[AB] Failed to load GameExecutor:', err);
+      console.error('[AB] Failed to load GameExecutor from:', runnerImport, err);
       wrapper.innerHTML = '<p style="padding:12px;color:#ef4444;background:#0f172a;">Game engine could not be loaded: ' + err.message + '</p>';
     });
   }
