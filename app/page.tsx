@@ -69,14 +69,19 @@ export default async function Dashboard() {
           <div className="space-y-12">
             {/* Aggregate stats bar */}
             {(() => {
-              const liveTests = projects.flatMap(p => p.tests).filter(t => t.status === 'live').length;
-              const totalTests = projects.flatMap(p => p.tests).length;
-              const totalEvents = projects.flatMap(p => p.tests).flatMap(t => t.variants).flatMap(v => v.events).length;
+              const allTests = projects.flatMap(p => p.tests);
+              const allVariants = allTests.flatMap(t => t.variants);
+              const allEvents = allVariants.flatMap(v => v.events);
+              const liveTests = allTests.filter(t => t.status === 'live').length;
+              const totalTests = allTests.length;
+              const totalEvents = allEvents.length;
+              const totalConversions = allEvents.filter(e => e.type === 'conversion').length;
               return (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
                     { label: 'Live Tests', value: liveTests, sub: `of ${totalTests} total`, color: 'text-emerald-400' },
                     { label: 'Events Recorded', value: totalEvents.toLocaleString(), sub: 'views + clicks', color: 'text-blue-400' },
+                    { label: 'Conversions', value: totalConversions.toLocaleString(), sub: 'goal completions', color: 'text-amber-400' },
                     { label: 'Projects', value: projects.length, sub: 'tracked', color: 'text-purple-400' },
                   ].map(stat => (
                     <div key={stat.label} className="rounded-xl border border-white/10 bg-white/[0.02] px-6 py-4">
