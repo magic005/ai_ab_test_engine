@@ -284,7 +284,8 @@ export function TestActions({
 // ---- Copy Snippet ----
 export function CopySnippet({ projectId }: { projectId: string }) {
   const [copied, setCopied] = useState(false);
-  const snippet = `<script src="${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/sdk.js" data-project-id="${projectId}"></script>`;
+  const dashboardOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://ai-ab-test-engine.vercel.app';
+  const snippet = `<script src="${dashboardOrigin}/sdk.js" data-project-id="${projectId}"></script>`;
 
   function copy() {
     navigator.clipboard.writeText(snippet);
